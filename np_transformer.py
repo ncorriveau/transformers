@@ -3,26 +3,25 @@ from scipy.special import softmax
 
 from .pyt_transformer import SingleHeadAttention
 
-def single_head_attention(X: np.ndarray, 
-                          Wq: np.ndarray, 
-                          Wk: np.ndarray, 
-                          Wv: np.ndarray, 
-                          Wo: np.ndarray) -> np.ndarray:
+
+def single_head_attention(
+    X: np.ndarray, Wq: np.ndarray, Wk: np.ndarray, Wv: np.ndarray, Wo: np.ndarray
+) -> np.ndarray:
     """
-    This computes a single attention head with matrix values. 
+    This computes a single attention head with matrix values.
         D = Model dimension (e.g. the output dim of the embedding layer)
         N = Number of elements in the input sequence
         B = Batch size
         Dk = Key dimension
         Dv = Value dimension
-    
-    Parameters 
+
+    Parameters
     ----------
     X: input matrix of shape (B, N, D)
     Wq: query matrix of shape (B, D, Dk)
     Wk: key matrix of shape (B, D, Dk)
     Wv: value matrix of shape (B, D, Dv)
-    Wo: output matrix of shape (B, Dv, D) e.g. projects back into model dimension 
+    Wo: output matrix of shape (B, Dv, D) e.g. projects back into model dimension
 
     Returns
     -------
@@ -47,8 +46,7 @@ def single_head_attention(X: np.ndarray,
     return final
 
     # return (softmax(np.dot(Q, K.T) / np.sqrt(Q.shape[-1])) @ V) @ Wo
-    
-    
+
 
 if __name__ == "__main__":
     # Define input matrices
@@ -64,7 +62,7 @@ if __name__ == "__main__":
     print(output)
 
     # Check the output shape
-    assert (output.shape == X.shape)
+    assert output.shape == X.shape
 
     # Check the output values (this is a simple case where output should be equal to input)
     # np.testing.assert_array_equal(output, X)

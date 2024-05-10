@@ -1,7 +1,8 @@
+import numpy as np
+import pytest
 
-import pytest 
-import numpy as np 
 import np_transformer
+
 
 def test_single_head_attention():
     # Define input matrices
@@ -15,10 +16,7 @@ def test_single_head_attention():
     output = np_transformer.single_head_attention(X, Wq, Wk, Wv, Wo)
 
     # Check the output shape
-    assert (output.shape == X.shape)
+    assert output.shape == X.shape
 
     # Check the output values (this is a simple case where output should be equal to input)
     np.testing.assert_array_equal(output, X)
-
-
-
