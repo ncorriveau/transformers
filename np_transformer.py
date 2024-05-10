@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.special import softmax
 
+from .pyt_transformer import SingleHeadAttention
 
 def single_head_attention(X: np.ndarray, 
                           Wq: np.ndarray, 
@@ -60,7 +61,7 @@ if __name__ == "__main__":
 
     # Call the function
     output = single_head_attention(X, Wq, Wk, Wv, Wo)
-    print(output.shape)
+    print(output)
 
     # Check the output shape
     assert (output.shape == X.shape)

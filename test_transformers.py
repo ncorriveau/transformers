@@ -1,7 +1,7 @@
 
 import pytest 
 import numpy as np 
-import transformer
+import np_transformer
 
 def test_single_head_attention():
     # Define input matrices
@@ -12,7 +12,7 @@ def test_single_head_attention():
     Wo = np.array([[[1, 0], [0, 1]]])
 
     # Call the function
-    output = transformer.single_head_attention(X, Wq, Wk, Wv, Wo)
+    output = np_transformer.single_head_attention(X, Wq, Wk, Wv, Wo)
 
     # Check the output shape
     assert (output.shape == X.shape)
