@@ -79,8 +79,8 @@ class MultiHeadAttention(nn.Module):
         attn = q @ k.transpose(-2, -1)
         attn = attn / math.sqrt(k.size(-1))
 
-        # mask our padding tokens since we will add them to make every sequence length S 
-        attn = attn.masked_fill(mask.view(B, 1, 1, S), float('-inf'))
+        # mask our padding tokens since we will add them to make every sequence length S
+        attn = attn.masked_fill(mask.view(B, 1, 1, S), float("-inf"))
 
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
@@ -131,9 +131,14 @@ class CausalSelfAttention(nn.Module):
 
         # use register buffer when you want to add weights that are not updated during backprop
         # good discussion here: https://discuss.pytorch.org/t/what-is-the-difference-between-register-buffer-and-register-parameter-of-nn-module/32723
-        self.register_buffer("causal_mask", torch.triu(torch.ones([context_size, context_size], 
-                                                                  dtype=torch.bool), diagonal=1)
-                                                                  ).view(1, 1, context_size, context_size)  # this just expands to 4 dim
+        self.register_buffer(
+            "causal_mask",
+            torch.triu(
+                torch.ones([context_size, context_size], dtype=torch.bool), diagonal=1
+            ),
+        ).view(
+            1, 1, context_size, context_size
+        )  # this just expands to 4 dim
 
     def forward(self, x: torch.Tensor, mask: torch.BoolTensor = None):
         B, S, C = x.size()
@@ -144,8 +149,8 @@ class CausalSelfAttention(nn.Module):
 
         # apply causal attention mask + our padding mask together
         # this works because we have boolean logic at each place e.g. 1 + 0 = 1
-        mask = self.causal_mask[:, :, :S, :S] + mask.view(B, 1, 1, S) 
-        attn = attn.masked_fill(mask, float('-inf'))
+        mask = self.causal_mask[:, :, :S, :S] + mask.view(B, 1, 1, S)
+        attn = attn.masked_fill(mask, float("-inf"))
 
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
@@ -158,8 +163,16 @@ class CausalSelfAttention(nn.Module):
         return self.output_drop(self.Wo(x))
 
 
-class CausalCrossAttention: 
-    def __init__(self, hidden_size: int, num_heads: int, context_size: int, attn_drop=0.1, output_drop=0.1, bias: bool = True):
+class CausalCrossAttention:
+    def __init__(
+        self,
+        hidden_size: int,
+        num_heads: int,
+        context_size: int,
+        attn_drop=0.1,
+        output_drop=0.1,
+        bias: bool = True,
+    ):
         """
         Following the cross attention implementation of the original transformer paper
         we have one set of query weights for the input seq X (think english input)
@@ -172,14 +185,14 @@ class CausalCrossAttention:
         self.nh = num_heads
         super().__init__()
         self.Wq = nn.Linear(hidden_size, hidden_size, bias=bias)
-        self.Wkv = nn.Linear(hidden_size, hidden_size * 2, bias=bias)    
+        self.Wkv = nn.Linear(hidden_size, hidden_size * 2, bias=bias)
 
         self.attn_drop = nn.Dropout(attn_drop)
         self.output_drop = nn.Dropout(output_drop)
 
     def forward(self, x: torch.Tensor, y: torch.Tensor, mask: torch.BoolTensor = None):
         # for ex in transformer paper, C = 512, nh = 8, so each head has dim 64
-        B, S, C = x.size() 
+        B, S, C = x.size()
         q = self.Wq(x).reshape(B, S, self.nh, C // self.nh).transpose(1, 2)
 
         # add in dimension for the separate k and v weights
@@ -189,8 +202,8 @@ class CausalCrossAttention:
         # rest is the same as regular self causal attention
         attn = q @ k.transpose(-2, -1)
         attn = attn / math.sqrt(k.size(-1))
-        mask = self.causal_mask[:, :, :S, :S] + mask.view(B, 1, 1, S) 
-        attn = attn.masked_fill(mask, float('-inf'))
+        mask = self.causal_mask[:, :, :S, :S] + mask.view(B, 1, 1, S)
+        attn = attn.masked_fill(mask, float("-inf"))
 
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
