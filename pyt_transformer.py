@@ -191,7 +191,7 @@ class CausalCrossAttention:
         self.output_drop = nn.Dropout(output_drop)
 
     def forward(self, x: torch.Tensor, y: torch.Tensor, mask: torch.BoolTensor = None):
-        # for ex in transformer paper, C = 512, nh = 8, so each head has dim 64
+        # for ex in transformer paper, C = 512, nh = 8, so each head has output dim 64
         B, S, C = x.size()
         q = self.Wq(x).reshape(B, S, self.nh, C // self.nh).transpose(1, 2)
 
@@ -210,3 +210,47 @@ class CausalCrossAttention:
         x = attn @ v
         x = x.transpose(1, 2).reshape(B, S, C)
         return self.output_drop(self.Wo(x))
+
+
+class FeedForward(nn.Module):
+    def __init__(self, hidden_size: int, expanded_size: int, activation: nn.Module = nn.GELU, dropout: float = 0.1, bias: bool = True):
+        super().__init__()
+        self.fc1 = nn.Linear(hidden_size, expanded_size, bias=bias)
+        self.act = activation()
+        self.fc2 = nn.Linear(expanded_size, hidden_size, bias=bias)
+        self.drop = nn.Dropout(dropout)
+    
+    def forward(self, x: torch.Tensor):
+        x = self.act(self.fc1(x))
+        x = self.drop(self.fc2(x))
+        return x
+
+
+class TransformerBlock(nn.Module):
+    """
+    We are using pre-norm by default
+    """
+    def __init__(
+        self,
+        hidden_size: int,
+        num_heads: int,
+        context_size: int,
+        attention: nn.Module = CausalSelfAttention,
+        activation: nn.Module = nn.GELU,
+        attn_drop: float = 0.1,
+        output_drop: float = 0.1,
+        ff_expansion: int = 4,
+        ff_drop: float = 0.1,
+        bias: bool = True,
+    ):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(hidden_size)
+        self.attn = attention(hidden_size, num_heads, context_size, attn_drop, output_drop, bias=bias)
+        self.ff = FeedForward(hidden_size=hidden_size, expanded_size=ff_expansion, activation=activation, dropout=ff_drop, bias=bias)
+        self.norm2 = nn.LayerNorm(hidden_size)
+    
+    def forward(self, x: torch.Tensor):
+        # normalization before passed to attention / FFN
+        x = x + self.attn(self.norm1(x))
+        x = x + self.ff(self.norm2(x))
+        return x
