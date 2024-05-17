@@ -213,13 +213,20 @@ class CausalCrossAttention:
 
 
 class FeedForward(nn.Module):
-    def __init__(self, hidden_size: int, expanded_size: int, activation: nn.Module = nn.GELU, dropout: float = 0.1, bias: bool = True):
+    def __init__(
+        self,
+        hidden_size: int,
+        expanded_size: int,
+        activation: nn.Module = nn.GELU,
+        dropout: float = 0.1,
+        bias: bool = True,
+    ):
         super().__init__()
         self.fc1 = nn.Linear(hidden_size, expanded_size, bias=bias)
         self.act = activation()
         self.fc2 = nn.Linear(expanded_size, hidden_size, bias=bias)
         self.drop = nn.Dropout(dropout)
-    
+
     def forward(self, x: torch.Tensor):
         x = self.act(self.fc1(x))
         x = self.drop(self.fc2(x))
@@ -230,6 +237,7 @@ class TransformerBlock(nn.Module):
     """
     We are using pre-norm by default
     """
+
     def __init__(
         self,
         hidden_size: int,
@@ -245,10 +253,18 @@ class TransformerBlock(nn.Module):
     ):
         super().__init__()
         self.norm1 = nn.LayerNorm(hidden_size)
-        self.attn = attention(hidden_size, num_heads, context_size, attn_drop, output_drop, bias=bias)
-        self.ff = FeedForward(hidden_size=hidden_size, expanded_size=ff_expansion, activation=activation, dropout=ff_drop, bias=bias)
+        self.attn = attention(
+            hidden_size, num_heads, context_size, attn_drop, output_drop, bias=bias
+        )
+        self.ff = FeedForward(
+            hidden_size=hidden_size,
+            expanded_size=ff_expansion,
+            activation=activation,
+            dropout=ff_drop,
+            bias=bias,
+        )
         self.norm2 = nn.LayerNorm(hidden_size)
-    
+
     def forward(self, x: torch.Tensor):
         # normalization before passed to attention / FFN
         x = x + self.attn(self.norm1(x))
@@ -258,12 +274,15 @@ class TransformerBlock(nn.Module):
 
 class PositionalEncoding(nn.Module):
     """
-    Implements the sinusoidal positional encoding from the original transformer paper 
+    Implements the sinusoidal positional encoding from the original transformer paper
     """
+
     def __init__(self, hidden_size: int, context_length: int):
         pe = torch.zeros(context_length, hidden_size, dtype=torch.float32)
         pos = torch.arange(context_length).unsqueeze(1).float()
-        div = torch.exp(torch.arange(0, hidden_size, 2).float() * -(math.log(10000.0) / hidden_size))
+        div = torch.exp(
+            torch.arange(0, hidden_size, 2).float() * -(math.log(10000.0) / hidden_size)
+        )
 
         # even use sin, odd use cos
         pe[:, 0::2] = torch.sin(pos * div)
@@ -272,7 +291,76 @@ class PositionalEncoding(nn.Module):
         self.register_buffer("pe", pe.unsqueeze(0), persistent=False)
 
     def forward(self, x: torch.Tensor):
-        # so we have calculated this value for every position up to 
+        # so we have calculated this value for every position up to
         # the max length. now we are taking the input sequence length and only
-        # returning values up to there 
+        # returning values up to there
         return self.pe[:, : x.shape[1], :]
+
+
+# time to add the whole GPT2 model
+class GPT2(nn.Module):
+    def __init__(
+        self,
+        hidden_size: int,
+        num_heads: int,
+        context_size: int,
+        num_layers: int,
+        vocab_size: int,
+        embed_dropout: float,
+        head_norm: bool = True,
+        tie_weights: bool = False,
+        attn_drop: float = 0.1,
+        output_drop: float = 0.1,
+        ff_expansion: int = 4,
+        ff_drop: float = 0.1,
+        bias: bool = False,
+    ):
+        super().__init__()
+
+        # token emb need to be length of the vocab size
+        # while pos emb needs to be length of the context size
+        self.token_emb = nn.Embedding(vocab_size, hidden_size)
+        self.pos_emb = nn.Embedding(context_size, hidden_size)
+        self.embed_drop = nn.Dropout(embed_dropout)
+
+        self.layers = nn.ModuleList(
+            [
+                TransformerBlock(
+                    hidden_size,
+                    num_heads,
+                    context_size,
+                    attention=CausalSelfAttention,
+                    activation=nn.GELU,
+                    attn_drop=attn_drop,
+                    output_drop=output_drop,
+                    ff_expansion=ff_expansion,
+                    ff_drop=ff_drop,
+                    bias=bias,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+        if head_norm:
+            self.head_norm = nn.LayerNorm(hidden_size)
+        else:
+            self.head_norm = nn.Identity()
+
+        if tie_weights:
+            self.head_weight = self.token_emb.weight
+
+        
+        self.head = nn.Linear(hidden_size, vocab_size, bias=bias)
+        pe = torch.zeros(context_size, hidden_size, dtype=torch.float32)
+        self.register_buffer("pe", pe, persistent=False)
+        self.apply(self._init_weights)
+    
+    def forward(self, x: torch.Tensor):
+        tokens = self.token_emb(x)
+        pos = self.pos_emb(self.pe[:x.shape[1]])
+        x = self.embed_drop(tokens + pos)
+
+        for layer in self.layers:
+            x = layer(x)
+        
+        x = self.head_norm(x)
+        return self.head(x)
