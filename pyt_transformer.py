@@ -254,3 +254,25 @@ class TransformerBlock(nn.Module):
         x = x + self.attn(self.norm1(x))
         x = x + self.ff(self.norm2(x))
         return x
+
+
+class PositionalEncoding(nn.Module):
+    """
+    Implements the sinusoidal positional encoding from the original transformer paper 
+    """
+    def __init__(self, hidden_size: int, context_length: int):
+        pe = torch.zeros(context_length, hidden_size, dtype=torch.float32)
+        pos = torch.arange(context_length).unsqueeze(1).float()
+        div = torch.exp(torch.arange(0, hidden_size, 2).float() * -(math.log(10000.0) / hidden_size))
+
+        # even use sin, odd use cos
+        pe[:, 0::2] = torch.sin(pos * div)
+        pe[:, 1::2] = torch.cos(pos * div)
+
+        self.register_buffer("pe", pe.unsqueeze(0), persistent=False)
+
+    def forward(self, x: torch.Tensor):
+        # so we have calculated this value for every position up to 
+        # the max length. now we are taking the input sequence length and only
+        # returning values up to there 
+        return self.pe[:, : x.shape[1], :]
