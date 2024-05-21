@@ -1,11 +1,27 @@
 import numpy as np
 from scipy.special import softmax
 
-from .pyt_transformer import SingleHeadAttention
+
+def causal_mask(n: int) -> np.ndarray:
+    """
+    This function creates a causal mask for the attention mechanism.
+    Parameters
+    ----------
+    n: int
+        The size of the mask (e.g. the context size)
+    """
+    mask = np.triu(np.ones((n, n)), k=1)
+    mask = np.where(mask == 1, -np.inf, 0)
+    return mask
 
 
 def single_head_attention(
-    X: np.ndarray, Wq: np.ndarray, Wk: np.ndarray, Wv: np.ndarray, Wo: np.ndarray
+    X: np.ndarray,
+    Wq: np.ndarray,
+    Wk: np.ndarray,
+    Wv: np.ndarray,
+    Wo: np.ndarray,
+    mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """
     This computes a single attention head with matrix values.
@@ -30,22 +46,12 @@ def single_head_attention(
     Q = np.matmul(X, Wq)
     K = np.matmul(X, Wk)
     V = np.matmul(X, Wv)
-    print(f" Q shape = {Q.shape}")
-    print(f" K.T shape = {K.transpose(0, 2, 1).shape}")
 
-    A = np.matmul(Q, K.transpose(0, 2, 1)) / np.sqrt(Q.shape[-1])
-    print(f"Attention matrix shape: {A.shape}")
-    A = softmax(A, axis=-1)
-    print(f"Attention w softmax shape: {A.shape}")
+    attn_matrix = np.matmul(Q, K.transpose(0, 2, 1)) / np.sqrt(Q.shape[-1])
+    if mask:
+        attn_matrix += mask
 
-    output = np.matmul(A, V)
-    print(f"Output matrix shape: {output.shape}")
-
-    final = np.matmul(output, Wo)
-    print(f"Final matrix shape: {final.shape}")
-    return final
-
-    # return (softmax(np.dot(Q, K.T) / np.sqrt(Q.shape[-1])) @ V) @ Wo
+    return softmax(attn_matrix) @ V @ Wo
 
 
 if __name__ == "__main__":

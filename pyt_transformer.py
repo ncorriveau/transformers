@@ -348,19 +348,18 @@ class GPT2(nn.Module):
         if tie_weights:
             self.head_weight = self.token_emb.weight
 
-        
         self.head = nn.Linear(hidden_size, vocab_size, bias=bias)
         pe = torch.zeros(context_size, hidden_size, dtype=torch.float32)
         self.register_buffer("pe", pe, persistent=False)
         self.apply(self._init_weights)
-    
+
     def forward(self, x: torch.Tensor):
         tokens = self.token_emb(x)
-        pos = self.pos_emb(self.pe[:x.shape[1]])
+        pos = self.pos_emb(self.pe[: x.shape[1]])
         x = self.embed_drop(tokens + pos)
 
         for layer in self.layers:
             x = layer(x)
-        
+
         x = self.head_norm(x)
         return self.head(x)
