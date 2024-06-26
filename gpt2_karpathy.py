@@ -6,11 +6,11 @@ from torch.nn import function as F
 
 @dataclass
 class GPTConfig:
-    vocab_size: int = 65
-    block_size: int = 256   # this is the context size
-    n_layers: int = 6
-    n_heads: int = 6
-    n_embed: int = 384 
+    vocab_size: int = 50257  # we can override this to 50304 which is the closest nice factor of 2 for implementation
+    block_size: int = 1024   # this is the context size
+    n_layers: int = 12
+    n_heads: int = 12
+    n_embed: int = 768 
 
 class CausalSelfAttention(nn.Module):
     def __init__(self, config: GPTConfig):
@@ -22,7 +22,7 @@ class CausalSelfAttention(nn.Module):
         self.n_head = config.n_heads
         self.n_embd = config.n_embed
 
-        # we define the number of heads such that nh * head dim = hidden size
+        # we define the number of heads such that nh * head dim = hidden sizei
         # thus once all heads are combined, we will be producing 3 hidden size weight matrices
         # for exampel if the hidden size size was 12 and nh = 3, then each would be dim BxSx4
         # in the paper they display multi head attention as doing individual projections for each head
@@ -32,8 +32,6 @@ class CausalSelfAttention(nn.Module):
         # project back to input dim like before
         self.c_proj = nn.Linear(self.n_embd, self.n_embd)
 
-        # use register buffer when you want to add weights that are not updated during backprop
-        # good discussion here: https://discuss.pytorch.org/t/what-is-the-difference-between-register-buffer-and-register-parameter-of-nn-module/32723
         self.register_buffer(
             "bias",
             torch.tril(
@@ -63,8 +61,6 @@ class CausalSelfAttention(nn.Module):
         # so that we can apply the final linear layer and project back to in put dim
         x = x.transpose(1, 2).reshape(B, S, C)
         return self.c_proj(x)
-
-
 
 
 class MLP(nn.module):
@@ -105,5 +101,7 @@ class GPT(nn.module):
         )
         self.ln_head = nn.Linear(config.n_embed, config.vocab_size, bias=False)
 
-    def forward(self, x):
-        pass 
+    def forward(self, idx):
+        B, T = idx.size()
+        assert T <= self.config.block_size, "Cannot forward, model block size is exhausted"
+         
