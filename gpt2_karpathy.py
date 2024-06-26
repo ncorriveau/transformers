@@ -24,7 +24,7 @@ class CausalSelfAttention(nn.Module):
 
         # we define the number of heads such that nh * head dim = hidden sizei
         # thus once all heads are combined, we will be producing 3 hidden size weight matrices
-        # for exampel if the hidden size size was 12 and nh = 3, then each would be dim BxSx4
+        # for example if the hidden size size was 12 and nh = 3, then each would be dim BxSx4
         # in the paper they display multi head attention as doing individual projections for each head
         # and then concatenating them together
         self.c_attn = nn.Linear(self.n_embd, self.n_embd * 3)
