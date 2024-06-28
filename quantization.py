@@ -277,10 +277,7 @@ def scale_fc_fc(fc1, fc2, scales):
         assert torch.isnan(p).sum() == 0
 
 @torch.no_grad()
-def auto_scale_block(module, name, w_bit,
-                     q_group_size,
-                     input_feat):
-
+def auto_scale_block(module, name, w_bit, q_group_size, input_feat):
     # find the best scale ratio
     def _search_module_scale(block, linears2scale: list, x, kwargs={}):
 
@@ -321,9 +318,10 @@ def auto_scale_block(module, name, w_bit,
 
             ############### YOUR CODE ENDS HERE #################
             # perhaps some form of normalization / weight scaling? 
+            # add epsilon to avoid numerical instability 
             scales = scales / (scales.max() * scales.min() + eps).sqrt().view(1, -1)
             assert torch.isnan(scales).sum() == 0
-            # print(f"scales shape = {scales.shape}")
+            
             for fc in linears2scale:
                 scales = scales.to(fc.weight.device)
 
@@ -349,7 +347,6 @@ def auto_scale_block(module, name, w_bit,
             history.append(loss)
             is_best = loss < best_error
             if is_best:
-                # print(f"Updating best scales to {scales}")
                 best_error = loss
                 best_ratio = ratio
                 best_scales = scales
@@ -411,7 +408,8 @@ if __name__ == '__main__':
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
     model = AutoModelForCausalLM.from_pretrained(model_path, device_map="auto")
     input_feat = get_calib_feat(model, tokenizer)
-    pseudo_quantize_model_weight_auto_scale(model, w_bit=3, q_group_size=128, input_feat=input_feat)
+    pseudo_quantize_model_weight_scaleup(model, w_bit=3, q_group_size=128, input_feat=input_feat, scale_factor=2)
+    # pseudo_quantize_model_weight_auto_scale(model, w_bit=3, q_group_size=128, input_feat=input_feat)
     
     # Evaluate the model
     model_perplexity = evaluate(model, tokenizer)
