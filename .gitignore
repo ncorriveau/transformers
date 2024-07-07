@@ -6,7 +6,8 @@ llm/*
 .vscode/*
 # C extensions
 *.so
-
+*.bin
+tinychat/transformer/json/*
 # Distribution / packaging
 .Python
 build/
