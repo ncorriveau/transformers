@@ -1,4 +1,4 @@
-## implement popular attention variants using a generalized framework in PyTorch ## 
+## implement popular attention variants using a generalized framework in PyTorch ##
 import math
 
 import torch
@@ -20,8 +20,10 @@ Design:
 
 """
 
+
 class Attention(nn.Module):
-    def __init__(self,
+    def __init__(
+        self,
         hidden_size: int,
         num_heads_q: int,
         num_heads_k: int,
@@ -34,22 +36,34 @@ class Attention(nn.Module):
         super().__init__()
         self.hidden_size = hidden_size
 
-        assert hidden_size % num_heads_q == 0, "Hidden size must be divisible by the number query of heads"
-        assert hidden_size % num_heads_k == 0, "Hidden size must be divisible by the number key of heads"
-        assert hidden_size % num_heads_v == 0, "Hidden size must be divisible by the number of value heads"
+        assert (
+            hidden_size % num_heads_q == 0
+        ), "Hidden size must be divisible by the number query of heads"
+        assert (
+            hidden_size % num_heads_k == 0
+        ), "Hidden size must be divisible by the number key of heads"
+        assert (
+            hidden_size % num_heads_v == 0
+        ), "Hidden size must be divisible by the number of value heads"
+
+        assert (
+            num_heads_q % num_heads_k == 0
+        ), "Number of query heads must be divisible by the number of key heads"
+        assert (
+            num_heads_q % num_heads_v == 0
+        ), "Number of query heads must be divisible by the number of value heads"
 
         self.num_heads_q = num_heads_q
         self.num_heads_k = num_heads_k
         self.num_heads_v = num_heads_v
 
         self.dim_q = hidden_size // num_heads_q
-        self.dim_k = hidden_size // num_heads_k
         self.dim_v = hidden_size // num_heads_v
 
         self.context_size = context_size
         self.attn_drop = nn.Dropout(attn_drop)
-        self.output_drop = nn.Dropout(output_drop) 
-        
+        self.output_drop = nn.Dropout(output_drop)
+
         # TODO: revert this bck to use the verified properties
         self.WQ = nn.Linear(hidden_size, self.dim_q * num_heads_q)
         self.WK = nn.Linear(hidden_size, self.dim_q * num_heads_k)
@@ -60,41 +74,44 @@ class Attention(nn.Module):
         self.mask = mask
 
     def forward(self, input: torch.Tensor):
-        B, S, D = input.size()   # batch size, sequence length, hidden dim
-        
-        Q = self.WQ(input).reshape(B, num_heads_q, S, self.dim_q)
+        B, S, D = input.size()  # batch size, sequence length, hidden dim
+
+        Q = self.WQ(input).reshape(
+            B, num_heads_q // num_heads_k, num_heads_k, S, self.dim_q
+        )
         K = self.WK(input).reshape(B, num_heads_k, S, self.dim_q)
         V = self.WV(input).reshape(B, num_heads_v, S, self.dim_v)
-        
-        attn = Q @ K.transpose(-2, -1)
+
+        attn = (Q @ K.transpose(-2, -1)).reshape(B, num_heads_q, S, S)
         attn = attn / math.sqrt(K.size(-1))
 
-        # TODO apply our mask here. 
+        # TODO apply our mask here.
         # attn = attn.masked_fill(self.mask, float("-inf"))
         # attn = attn.softmax(dim=-1)
 
         # now we can multiply the attention with the value matrix
-        x = attn @ V
-        x =x.reshape(B, S, num_heads_q * self.dim_v)
+        x = attn.reshape(B, num_heads_q // num_heads_v, num_heads_v, S, S) @ V
+        x = x.reshape(B, S, num_heads_q * self.dim_v)
         return self.W_0(x)
 
 
 if __name__ == "__main__":
-    B = 1    # batch size 
-    S = 10   # sequence length
-    H = 768  # hidden size 
+    B = 1  # batch size
+    S = 10  # sequence length
+    H = 768  # hidden size
 
     hidden_size = 768
     num_heads_q = 12
-    num_heads_k = 4
+    num_heads_k = 8
     num_heads_v = 4
     context_size = S
-    mask = torch.tril(
-        torch.ones([context_size, context_size], 
-                                 dtype=torch.bool)
-                                 ).view(1, 1, context_size, context_size)
+    mask = torch.tril(torch.ones([context_size, context_size], dtype=torch.bool)).view(
+        1, 1, context_size, context_size
+    )
 
     input = torch.rand(B, S, H)
-    attention = Attention(hidden_size, num_heads_q, num_heads_k, num_heads_v, context_size, mask)
+    attention = Attention(
+        hidden_size, num_heads_q, num_heads_k, num_heads_v, context_size, mask
+    )
     output = attention(input)
     print(output.size())
