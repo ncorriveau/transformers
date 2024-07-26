@@ -33,49 +33,32 @@ class Attention(nn.Module):
     ):
         super().__init__()
         self.hidden_size = hidden_size
-        self._num_heads_q = num_heads_q
-        self._num_heads_k = num_heads_k
-        self._num_heads_v = num_heads_v
+
+        assert hidden_size % num_heads_q == 0, "Hidden size must be divisible by the number query of heads"
+        assert hidden_size % num_heads_k == 0, "Hidden size must be divisible by the number key of heads"
+        assert hidden_size % num_heads_v == 0, "Hidden size must be divisible by the number of value heads"
+
+        self.num_heads_q = num_heads_q
+        self.num_heads_k = num_heads_k
+        self.num_heads_v = num_heads_v
         self.context_size = context_size
         self.attn_drop = nn.Dropout(attn_drop)
         self.output_drop = nn.Dropout(output_drop) 
-
-        # TODO: need to add in some checks to make sure that the num of 
-        # qkv heads make sense with each other e.g. maybe k must equal v 
-        @property
-        def num_heads_q(self):
-            if hidden_size % self._num_heads_q != 0:
-                raise ValueError("Hidden size must be divisible by the number of heads")
-            return self._num_heads_q
         
-        @property
-        def num_heads_k(self):
-            if hidden_size % self._num_heads_k != 0:
-                raise ValueError("Hidden size must be divisible by the number of heads")
-            return self._num_heads_k
-        
-        @property
-        def num_heads_v(self):
-            if hidden_size % self._num_heads_v != 0:
-                raise ValueError("Hidden size must be divisible by the number of heads")
-            return self._num_heads_v
-        
-        self.WQ = nn.Linear(hidden_size, hidden_size // self.num_heads_q)
-        self.WK = nn.Linear(hidden_size, hidden_size // self.num_heads_k)
-        self.WV = nn.Linear(hidden_size, hidden_size // self.num_heads_v)
+        # TODO: revert this bck to use the verified properties
+        self.WQ = nn.Linear(hidden_size, hidden_size)
+        self.WK = nn.Linear(hidden_size, hidden_size)
+        self.WV = nn.Linear(hidden_size, hidden_size)
         self.W_0 = nn.Linear(hidden_size, hidden_size)
-        
+
         self.mask = mask
 
     def forward(self, input: torch.Tensor):
         B, S, C = input.size()
+        
         Q = self.WQ(input).reshape(B, S, self.num_heads_q, C // self.num_heads_q)
         K = self.WK(input).reshape(B, S, self.num_heads_k, C // self.num_heads_k)
         V = self.WV(input).reshape(B, S, self.num_heads_v, C // self.num_heads_v)
-
-        print(f"Query Tensor Size: {Q.size()}")
-        print(f"Key Tensor Size: {K.size()}")
-        print(f"Value Tensor Size: {V.size()}")
 
         Q, K, V = Q.transpose(3, 1), K.transpose(3, 1), V.transpose(3, 1)
         
@@ -90,3 +73,24 @@ class Attention(nn.Module):
         x = attn @ V
         x = x.transpose(1, 2).reshape(B, S, C)
         return self.W_0(x)
+
+
+if __name__ == "__main__":
+    B = 1    # batch size 
+    S = 10   # sequence length
+    H = 768  # hidden size 
+
+    hidden_size = 768
+    num_heads_q = 12
+    num_heads_k = 12
+    num_heads_v = 12
+    context_size = S
+    mask = torch.tril(
+        torch.ones([context_size, context_size], 
+                                 dtype=torch.bool)
+                                 ).view(1, 1, context_size, context_size)
+
+    input = torch.rand(B, S, H)
+    attention = Attention(hidden_size, num_heads_q, num_heads_k, num_heads_v, context_size, mask)
+    output = attention(input)
+    print(output.size())
