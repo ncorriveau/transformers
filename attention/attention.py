@@ -51,10 +51,10 @@ class Attention(nn.Module):
         self.output_drop = nn.Dropout(output_drop) 
         
         # TODO: revert this bck to use the verified properties
-        self.WQ = nn.Linear(hidden_size, hidden_size)
-        self.WK = nn.Linear(hidden_size, hidden_size)
-        self.WV = nn.Linear(hidden_size, hidden_size)
-        self.W_0 = nn.Linear(hidden_size, hidden_size)
+        self.WQ = nn.Linear(hidden_size, self.dim_q * num_heads_q)
+        self.WK = nn.Linear(hidden_size, self.dim_q * num_heads_k)
+        self.WV = nn.Linear(hidden_size, self.dim_v * num_heads_v)
+        self.W_0 = nn.Linear(num_heads_q * self.dim_v, hidden_size)
 
         # TODO: add in checks around the sizing here (must be B, H, S, S)
         self.mask = mask
@@ -62,9 +62,9 @@ class Attention(nn.Module):
     def forward(self, input: torch.Tensor):
         B, S, D = input.size()   # batch size, sequence length, hidden dim
         
-        Q = self.WQ(input).reshape(B, num_heads_q, S, D // self.num_heads_q)
-        K = self.WK(input).reshape(B, num_heads_k, S, D // self.num_heads_k)
-        V = self.WV(input).reshape(B, num_heads_v, S, D // self.num_heads_v)
+        Q = self.WQ(input).reshape(B, num_heads_q, S, self.dim_q)
+        K = self.WK(input).reshape(B, num_heads_k, S, self.dim_q)
+        V = self.WV(input).reshape(B, num_heads_v, S, self.dim_v)
         
         attn = Q @ K.transpose(-2, -1)
         attn = attn / math.sqrt(K.size(-1))
@@ -75,7 +75,7 @@ class Attention(nn.Module):
 
         # now we can multiply the attention with the value matrix
         x = attn @ V
-        x = x.transpose(1, 2).reshape(B, S, H)
+        x =x.reshape(B, S, num_heads_q * self.dim_v)
         return self.W_0(x)
 
 
@@ -86,8 +86,8 @@ if __name__ == "__main__":
 
     hidden_size = 768
     num_heads_q = 12
-    num_heads_k = 1
-    num_heads_v = 1
+    num_heads_k = 4
+    num_heads_v = 4
     context_size = S
     mask = torch.tril(
         torch.ones([context_size, context_size], 
