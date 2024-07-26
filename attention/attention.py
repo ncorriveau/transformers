@@ -41,6 +41,11 @@ class Attention(nn.Module):
         self.num_heads_q = num_heads_q
         self.num_heads_k = num_heads_k
         self.num_heads_v = num_heads_v
+
+        self.dim_q = hidden_size // num_heads_q
+        self.dim_k = hidden_size // num_heads_k
+        self.dim_v = hidden_size // num_heads_v
+
         self.context_size = context_size
         self.attn_drop = nn.Dropout(attn_drop)
         self.output_drop = nn.Dropout(output_drop) 
@@ -51,27 +56,26 @@ class Attention(nn.Module):
         self.WV = nn.Linear(hidden_size, hidden_size)
         self.W_0 = nn.Linear(hidden_size, hidden_size)
 
+        # TODO: add in checks around the sizing here (must be B, H, S, S)
         self.mask = mask
 
     def forward(self, input: torch.Tensor):
-        B, S, C = input.size()
+        B, S, D = input.size()   # batch size, sequence length, hidden dim
         
-        Q = self.WQ(input).reshape(B, S, self.num_heads_q, C // self.num_heads_q)
-        K = self.WK(input).reshape(B, S, self.num_heads_k, C // self.num_heads_k)
-        V = self.WV(input).reshape(B, S, self.num_heads_v, C // self.num_heads_v)
-
-        Q, K, V = Q.transpose(3, 1), K.transpose(3, 1), V.transpose(3, 1)
+        Q = self.WQ(input).reshape(B, num_heads_q, S, D // self.num_heads_q)
+        K = self.WK(input).reshape(B, num_heads_k, S, D // self.num_heads_k)
+        V = self.WV(input).reshape(B, num_heads_v, S, D // self.num_heads_v)
         
         attn = Q @ K.transpose(-2, -1)
         attn = attn / math.sqrt(K.size(-1))
 
         # TODO apply our mask here. 
-        attn = attn.masked_fill(self.mask, float("-inf"))
-        attn = attn.softmax(dim=-1)
+        # attn = attn.masked_fill(self.mask, float("-inf"))
+        # attn = attn.softmax(dim=-1)
 
         # now we can multiply the attention with the value matrix
         x = attn @ V
-        x = x.transpose(1, 2).reshape(B, S, C)
+        x = x.transpose(1, 2).reshape(B, S, H)
         return self.W_0(x)
 
 
@@ -82,8 +86,8 @@ if __name__ == "__main__":
 
     hidden_size = 768
     num_heads_q = 12
-    num_heads_k = 12
-    num_heads_v = 12
+    num_heads_k = 1
+    num_heads_v = 1
     context_size = S
     mask = torch.tril(
         torch.ones([context_size, context_size], 
