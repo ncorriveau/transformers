@@ -64,33 +64,36 @@ class Attention(nn.Module):
         self.attn_drop = nn.Dropout(attn_drop)
         self.output_drop = nn.Dropout(output_drop)
 
-        # TODO: revert this bck to use the verified properties
         self.WQ = nn.Linear(hidden_size, self.dim_q * num_heads_q)
         self.WK = nn.Linear(hidden_size, self.dim_q * num_heads_k)
         self.WV = nn.Linear(hidden_size, self.dim_v * num_heads_v)
         self.W_0 = nn.Linear(num_heads_q * self.dim_v, hidden_size)
 
-        # TODO: add in checks around the sizing here (must be B, H, S, S)
+        # must be context size, context size for the attention mask
+        assert mask.size() == (context_size, context_size), "Mask size is invalid"
         self.mask = mask
 
     def forward(self, input: torch.Tensor):
         B, S, D = input.size()  # batch size, sequence length, hidden dim
 
-        Q = self.WQ(input).reshape(
+        Q: torch.Tensor = self.WQ(input).reshape(
             B, num_heads_q // num_heads_k, num_heads_k, S, self.dim_q
         )
-        K = self.WK(input).reshape(B, num_heads_k, S, self.dim_q)
-        V = self.WV(input).reshape(B, num_heads_v, S, self.dim_v)
+        K: torch.Tensor = self.WK(input).reshape(B, num_heads_k, S, self.dim_q)
+        V: torch.Tensor = self.WV(input).reshape(B, num_heads_v, S, self.dim_v)
 
-        attn = (Q @ K.transpose(-2, -1)).reshape(B, num_heads_q, S, S)
+        attn: torch.Tensor = (Q @ K.transpose(-2, -1)).reshape(B, num_heads_q, S, S)
         attn = attn / math.sqrt(K.size(-1))
 
         # TODO apply our mask here.
-        # attn = attn.masked_fill(self.mask, float("-inf"))
-        # attn = attn.softmax(dim=-1)
+        self.mask = self.mask.view(1, 1, S, S)
+        attn = attn.masked_fill(self.mask, float("-inf"))
+        attn = attn.softmax(dim=-1)
 
         # now we can multiply the attention with the value matrix
-        x = attn.reshape(B, num_heads_q // num_heads_v, num_heads_v, S, S) @ V
+        x: torch.Tensor = (
+            attn.reshape(B, num_heads_q // num_heads_v, num_heads_v, S, S) @ V
+        )
         x = x.reshape(B, S, num_heads_q * self.dim_v)
         return self.W_0(x)
 
@@ -102,12 +105,10 @@ if __name__ == "__main__":
 
     hidden_size = 768
     num_heads_q = 12
-    num_heads_k = 8
+    num_heads_k = 4
     num_heads_v = 4
     context_size = S
-    mask = torch.tril(torch.ones([context_size, context_size], dtype=torch.bool)).view(
-        1, 1, context_size, context_size
-    )
+    mask = torch.tril(torch.ones([context_size, context_size], dtype=torch.bool))
 
     input = torch.rand(B, S, H)
     attention = Attention(
