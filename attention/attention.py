@@ -41,26 +41,26 @@ class Mask:
         self.context_size = context_size
 
     @cached_property
-    def causal_mask(self):
+    def causal_mask(self) -> torch.BoolTensor:
         return torch.tril(
             torch.ones([self.context_size, self.context_size], dtype=torch.bool),
             diagonal=1,
         )
 
     @cached_property
-    def sliding_window_mask(self, window_size: int):
+    def sliding_window_mask(self, window_size: int) -> torch.BoolTensor:
         pass
 
     @cached_property
-    def global_mask(self):
+    def global_mask(self) -> torch.BoolTensor:
         pass
 
     @cached_property
-    def dilated_sliding_mask(self):
+    def dilated_sliding_mask(self) -> torch.BoolTensor:
         pass
 
     @cached_property
-    def streaming_mask(self):
+    def streaming_mask(self) -> torch.BoolTensor:
         pass
 
 
@@ -131,9 +131,8 @@ class Attention(nn.Module):
         attn: torch.Tensor = (Q @ K.transpose(-2, -1)).reshape(B, num_heads_q, S, S)
         attn = attn / math.sqrt(K.size(-1))
 
-        # TODO apply our mask here.
-        self.mask = self.mask.view(1, 1, S, S)
-        attn = attn.masked_fill(self.mask, float("-inf"))
+        # take only the mask tokens up to the sequence length
+        attn = attn.masked_fill(self.mask[:, :, :S, :S], float("-inf"))
         attn = attn.softmax(dim=-1)
 
         # now we can multiply the attention with the value matrix
