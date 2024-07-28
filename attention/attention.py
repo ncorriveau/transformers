@@ -117,7 +117,7 @@ class Attention(nn.Module):
 
         # must be context size, context size for the attention mask
         assert mask.size() == (context_size, context_size), "Mask size is invalid"
-        self.mask = mask
+        self.mask = mask.view(1, 1, context_size, context_size)
 
     def forward(self, input: torch.Tensor):
         B, S, D = input.size()  # batch size, sequence length, hidden dim
@@ -153,7 +153,11 @@ if __name__ == "__main__":
     num_heads_k = 4
     num_heads_v = 4
     context_size = S
-    mask = torch.tril(torch.ones([context_size, context_size], dtype=torch.bool))
+
+    # simple causal mask below but in theory you could do something like
+    # mask = Mask(context_size)
+    # combined_mask = mask.causal_mask + mask.sliding_window_mask(4)
+    mask = Mask(context_size).causal_mask
 
     input = torch.rand(B, S, H)
     attention = Attention(
