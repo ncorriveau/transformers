@@ -53,9 +53,18 @@ class Mask:
         mask = (diff <= 1) & (diff >= -window_size)
         return mask.to(torch.bool)
 
-    @cached_property
-    def global_mask(self) -> torch.BoolTensor:
-        pass
+    def global_mask(
+        self, h_indices: torch.Tensor, v_indices: torch.Tensor
+    ) -> torch.BoolTensor:
+        if (torch.max(v_indices) >= self.context_size) | (
+            torch.max(h_indices) >= self.context_size
+        ):
+            raise ValueError("Indices cannot exceed context size")
+
+        mask = torch.zeros(self.context_size, self.context_size, dtype=torch.bool)
+        mask[:, v_indices] = True
+        mask[h_indices, :] = True
+        return mask
 
     @cached_property
     def dilated_sliding_mask(self) -> torch.BoolTensor:
