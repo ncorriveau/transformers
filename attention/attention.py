@@ -47,9 +47,11 @@ class Mask:
             diagonal=1,
         )
 
-    @cached_property
     def sliding_window_mask(self, window_size: int) -> torch.BoolTensor:
-        pass
+        r = torch.arange(self.context_size)
+        diff = r[None, :] - r[:, None]
+        mask = (diff <= 1) & (diff >= -window_size)
+        return mask.to(torch.bool)
 
     @cached_property
     def global_mask(self) -> torch.BoolTensor:
