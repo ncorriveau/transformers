@@ -39,18 +39,15 @@ class Mask:
 
     def __init__(self, context_size: int):
         self.context_size = context_size
+        self.range = torch.arange(context_size)
+        self.diff = self.range[None, :] - self.range[:, None]
 
     @cached_property
     def causal_mask(self) -> torch.BoolTensor:
-        return torch.tril(
-            torch.ones([self.context_size, self.context_size], dtype=torch.bool),
-            diagonal=1,
-        )
+        return self.diff <= 1
 
     def sliding_window_mask(self, window_size: int) -> torch.BoolTensor:
-        r = torch.arange(self.context_size)
-        diff = r[None, :] - r[:, None]
-        mask = (diff <= 1) & (diff >= -window_size)
+        mask = (self.diff >= -window_size) & (self.causal_mask)
         return mask.to(torch.bool)
 
     def global_mask(
@@ -64,6 +61,7 @@ class Mask:
         mask = torch.zeros(self.context_size, self.context_size, dtype=torch.bool)
         mask[:, v_indices] = True
         mask[h_indices, :] = True
+        mask[~self.causal_mask] = False
         return mask
 
     @cached_property
