@@ -69,15 +69,26 @@ class Mask:
             mask[~self.causal_mask] = False
         return mask
 
-    @cached_property
     def dilated_sliding_mask(self) -> torch.BoolTensor:
         pass
 
-    @cached_property
     def streaming_mask(
         self, anchor_range: int, window_range: int, causal: bool = True
     ) -> torch.BoolTensor:
-        pass
+        """
+        Rough implementation of the mask used for KV cache in 'StreamLLM'
+        The whole idea centers around 'attention sinks' of the first couple of tokens
+        having an outsized impact of attention scores. So keep 'anchor_range' of these,
+        and then this would usually be paired with the sliding window mask.
+
+        Paper: https://arxiv.org/abs/2309.17453
+        """
+        mask = torch.zeros(self.context_size, self.context_size, dtype=torch.bool)
+        mask[:, :anchor_range] = True
+        mask = mask | self.sliding_window_mask(window_range)
+        if causal:
+            mask[~self.causal_mask] = False
+        return mask
 
 
 class Attention(nn.Module):
