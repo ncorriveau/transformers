@@ -1,20 +1,23 @@
-import tqdm
-import torch
-from torch import nn
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from datasets import load_dataset
-from functools import partial
 import gc
+from functools import partial
 
-eps = 1e-6 # for numerical stability
+import torch
+import tqdm
+from datasets import load_dataset
+from torch import nn
+
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+eps = 1e-6  # for numerical stability
 Byte = 8
 KiB = 1024 * Byte
 MiB = 1024 * KiB
 GiB = 1024 * MiB
 
+
 def evaluate(model, tokenizer):
-    testenc = load_dataset('wikitext', 'wikitext-2-raw-v1', split='test')
-    testenc = tokenizer("\n\n".join(testenc['text']), return_tensors='pt')
+    testenc = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
+    testenc = tokenizer("\n\n".join(testenc["text"]), return_tensors="pt")
 
     testenc = testenc.input_ids.to(model.device)
     nsamples = 40
@@ -22,17 +25,20 @@ def evaluate(model, tokenizer):
 
     nlls = []
     for i in tqdm.tqdm(range(nsamples), desc="evaluating..."):
-        batch = testenc[:, (i * 2048):((i + 1) * 2048)].to(model.device)
+        batch = testenc[:, (i * 2048) : ((i + 1) * 2048)].to(model.device)
         with torch.no_grad():
             lm_logits = model(batch).logits
         shift_logits = lm_logits[:, :-1, :].contiguous().float()
-        shift_labels = testenc[:, (i * 2048):((i + 1) * 2048)][:, 1:]
+        shift_labels = testenc[:, (i * 2048) : ((i + 1) * 2048)][:, 1:]
         loss_fct = nn.CrossEntropyLoss()
-        loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        loss = loss_fct(
+            shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
+        )
         neg_log_likelihood = loss.float() * 2048
         nlls.append(neg_log_likelihood)
 
     return torch.exp(torch.stack(nlls).sum() / (nsamples * 2048))
+
 
 def get_model_size(model: nn.Module, data_width=16, group_size=-1):
 
@@ -61,7 +67,7 @@ def pseudo_quantize_tensor(w, n_bit=4, q_group_size=-1):
     assert min_val.dim() == 2 and min_val.size(0) == w.size(0) and min_val.size(1) == 1
 
     # Calculate the scale factor and zero point.  (Formula 1 & 2)
-    max_int = 2 ** n_bit - 1
+    max_int = 2**n_bit - 1
     scales = (max_val - min_val).clamp(min=1e-5) / max_int
     assert scales.shape == max_val.shape
     zeros = (-torch.round(min_val / scales)).clamp_(0, max_int)
@@ -83,13 +89,19 @@ def pseudo_quantize_tensor(w, n_bit=4, q_group_size=-1):
     w = w.reshape(org_w_shape)
     return w
 
+
 @torch.no_grad()
 def pseudo_quantize_model_weight(
-    model, w_bit, q_group_size,
+    model,
+    w_bit,
+    q_group_size,
 ):
     for n, m in model.named_modules():
         if isinstance(m, nn.Linear):
-            m.weight.data = pseudo_quantize_tensor(m.weight.data, n_bit=w_bit, q_group_size=q_group_size)
+            m.weight.data = pseudo_quantize_tensor(
+                m.weight.data, n_bit=w_bit, q_group_size=q_group_size
+            )
+
 
 def get_calib_dataset(tokenizer=None, n_samples=256, block_size=512):
     dataset = load_dataset("mit-han-lab/pile-val-backup", split="validation")
@@ -114,11 +126,15 @@ def get_calib_dataset(tokenizer=None, n_samples=256, block_size=512):
     cat_samples = torch.cat(samples, dim=1)
     n_split = cat_samples.shape[1] // block_size
     print(f" * Split into {n_split} blocks")
-    return [cat_samples[:, i*block_size:(i+1)*block_size] for i in range(n_split)]
+    return [
+        cat_samples[:, i * block_size : (i + 1) * block_size] for i in range(n_split)
+    ]
+
 
 @torch.no_grad()
 def get_calib_feat(model, tokenizer):
     input_dict = dict()
+
     def stat_input_max_hook(m, x, y, name):
         if isinstance(x, tuple):
             x = x[0]
@@ -132,8 +148,8 @@ def get_calib_feat(model, tokenizer):
     for name, m in model.named_modules():
         if isinstance(m, nn.Linear):
             hooks.append(
-                m.register_forward_hook(
-                    partial(stat_input_max_hook, name=name)))
+                m.register_forward_hook(partial(stat_input_max_hook, name=name))
+            )
 
     print("Collecting activation scales...")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -148,10 +164,9 @@ def get_calib_feat(model, tokenizer):
         hook.remove()
     return input_dict
 
+
 @torch.no_grad()
-def pseudo_quantize_model_salient_weight_fp16(
-    model, w_bit, q_group_size, input_feat
-):
+def pseudo_quantize_model_salient_weight_fp16(model, w_bit, q_group_size, input_feat):
     for n, m in model.named_modules():
         if isinstance(m, nn.Linear):
             # this is a list of [127 elements] with each
@@ -162,7 +177,9 @@ def pseudo_quantize_model_salient_weight_fp16(
             ############### YOUR CODE STARTS HERE ###############
 
             # Step 1: Find 1% of the salient weight channels according to importance (hint: use torch.topk())
-            outlier_indices = torch.topk(importance, k=int(0.01 * importance.shape[0])).indices
+            outlier_indices = torch.topk(
+                importance, k=int(0.01 * importance.shape[0])
+            ).indices
             assert outlier_indices.dim() == 1
 
             ############### YOUR CODE ENDS HERE #################
@@ -170,7 +187,9 @@ def pseudo_quantize_model_salient_weight_fp16(
             # Back up the values of the salient weight channels
             outlier = m.weight.data[:, outlier_indices].clone()
 
-            m.weight.data = pseudo_quantize_tensor(m.weight.data, n_bit=w_bit, q_group_size=q_group_size)
+            m.weight.data = pseudo_quantize_tensor(
+                m.weight.data, n_bit=w_bit, q_group_size=q_group_size
+            )
 
             ############### YOUR CODE STARTS HERE ###############
 
@@ -180,9 +199,7 @@ def pseudo_quantize_model_salient_weight_fp16(
 
 
 @torch.no_grad()
-def pseudo_quantize_model_random_weight_fp16(
-    model, w_bit, q_group_size, input_feat
-):
+def pseudo_quantize_model_random_weight_fp16(model, w_bit, q_group_size, input_feat):
     for n, m in model.named_modules():
         if isinstance(m, nn.Linear):
             importance = sum(input_feat[n]).float()
@@ -198,12 +215,15 @@ def pseudo_quantize_model_random_weight_fp16(
 
             # Back up the values of the selected weight channels
             outlier = m.weight.data[:, outlier_mask].clone()
-            m.weight.data = pseudo_quantize_tensor(m.weight.data, n_bit=w_bit, q_group_size=q_group_size)
+            m.weight.data = pseudo_quantize_tensor(
+                m.weight.data, n_bit=w_bit, q_group_size=q_group_size
+            )
 
             ############### YOUR CODE STARTS HERE ###############
             # Step 2: Restore the 1% selected weight channels to their original FP16 values
             m.weight.data[:, outlier_mask] = outlier
             ############### YOUR CODE ENDS HERE #################
+
 
 @torch.no_grad()
 def pseudo_quantize_model_weight_scaleup(
@@ -216,7 +236,9 @@ def pseudo_quantize_model_weight_scaleup(
             ############### YOUR CODE STARTS HERE ###############
 
             # Step 1: Find 1% of the salient weight channels
-            outlier_mask = torch.topk(importance, k=int(0.01 * importance.shape[0])).indices
+            outlier_mask = torch.topk(
+                importance, k=int(0.01 * importance.shape[0])
+            ).indices
             assert outlier_mask.dim() == 1
 
             ############### YOUR CODE ENDS HERE #################
@@ -227,7 +249,9 @@ def pseudo_quantize_model_weight_scaleup(
             # Scale up the values of the salient weight channels
             m.weight.data[:, outlier_mask] *= scale_factor
 
-            m.weight.data = pseudo_quantize_tensor(m.weight.data, n_bit=w_bit, q_group_size=q_group_size)
+            m.weight.data = pseudo_quantize_tensor(
+                m.weight.data, n_bit=w_bit, q_group_size=q_group_size
+            )
 
             ############### YOUR CODE STARTS HERE ###############
 
@@ -235,6 +259,7 @@ def pseudo_quantize_model_weight_scaleup(
             m.weight.data[:, outlier_mask] /= scale_factor
 
             ############### YOUR CODE ENDS HERE #################
+
 
 @torch.no_grad()
 def scale_ln_fcs(ln, fcs, scales):
@@ -244,7 +269,7 @@ def scale_ln_fcs(ln, fcs, scales):
     scales = scales.to(ln.weight.device)
 
     ln.weight.div_(scales)
-    if hasattr(ln, 'bias') and ln.bias is not None:
+    if hasattr(ln, "bias") and ln.bias is not None:
         ln.bias.div_(scales)
 
     for fc in fcs:
@@ -265,7 +290,7 @@ def scale_fc_fc(fc1, fc2, scales):
     scales = scales.to(fc1.weight.device)
 
     # fc1.weight.div_(scales.view(-1, 1))
-    fc1.weight[-scales.size(0):].div_(scales.view(-1, 1))
+    fc1.weight[-scales.size(0) :].div_(scales.view(-1, 1))
     if fc1.bias is not None:
         fc1.bias.div_(scales.view(-1))
 
@@ -275,6 +300,7 @@ def scale_fc_fc(fc1, fc2, scales):
         assert torch.isnan(p).sum() == 0
     for p in fc2.parameters():
         assert torch.isnan(p).sum() == 0
+
 
 @torch.no_grad()
 def auto_scale_block(module, name, w_bit, q_group_size, input_feat):
@@ -294,7 +320,7 @@ def auto_scale_block(module, name, w_bit, q_group_size, input_feat):
         ############### YOUR CODE STARTS HERE ###############
 
         # Step 1: Initialize the best_error, best_ratio and best_scales
-        best_error = float('inf')
+        best_error = float("inf")
         best_ratio = 0
         best_scales = 0
 
@@ -303,7 +329,7 @@ def auto_scale_block(module, name, w_bit, q_group_size, input_feat):
         n_grid = 20
         history = []
 
-        # send state dict (eg weights) to the cpu 
+        # send state dict (eg weights) to the cpu
         org_sd = {k: v.cpu() for k, v in block.state_dict().items()}
         for ratio in range(n_grid):
             # ratio is the \alpha in the formula
@@ -312,23 +338,25 @@ def auto_scale_block(module, name, w_bit, q_group_size, input_feat):
             ############### YOUR CODE STARTS HERE ###############
 
             # Step 2: Calculate the scales by the formula: scales = s_x^ratio
-            scales = s_x ** ratio
+            scales = s_x**ratio
             assert scales.shape == s_x.shape
             # print(f"scales shape = {scales.shape}")
 
             ############### YOUR CODE ENDS HERE #################
-            # perhaps some form of normalization / weight scaling? 
-            # add epsilon to avoid numerical instability 
+            # perhaps some form of normalization / weight scaling?
+            # add epsilon to avoid numerical instability
             scales = scales / (scales.max() * scales.min() + eps).sqrt().view(1, -1)
             assert torch.isnan(scales).sum() == 0
-            
+
             for fc in linears2scale:
                 scales = scales.to(fc.weight.device)
 
                 # Scale up the values of the weight channels
                 assert torch.isnan(scales).sum() == 0
                 fc.weight.mul_(scales)
-                fc.weight.data = pseudo_quantize_tensor(fc.weight.data, w_bit, q_group_size)
+                fc.weight.data = pseudo_quantize_tensor(
+                    fc.weight.data, w_bit, q_group_size
+                )
 
                 ############### YOUR CODE STARTS HERE ###############
 
@@ -342,16 +370,18 @@ def auto_scale_block(module, name, w_bit, q_group_size, input_feat):
             if isinstance(out, tuple):
                 out = out[0]
 
-            # norm diff between two matrices 
-            loss = (org_out - out).float().pow(2).mean().item()  # float prevents overflow
+            # norm diff between two matrices
+            loss = (
+                (org_out - out).float().pow(2).mean().item()
+            )  # float prevents overflow
             history.append(loss)
             is_best = loss < best_error
             if is_best:
                 best_error = loss
                 best_ratio = ratio
                 best_scales = scales
-            
-            # restore the original state dict for next iteration 
+
+            # restore the original state dict for next iteration
             block.load_state_dict(org_sd)
 
         if best_ratio == -1:
@@ -363,34 +393,35 @@ def auto_scale_block(module, name, w_bit, q_group_size, input_feat):
         return best_scales.detach()
 
     # attention input
-    inp = input_feat[name + '.self_attn.out_proj']
+    inp = input_feat[name + ".self_attn.out_proj"]
     inp = torch.cat([x.unsqueeze(0) for x in inp], dim=0).unsqueeze(0)
     qkv = [module.self_attn.q_proj, module.self_attn.k_proj, module.self_attn.v_proj]
     final_scales = _search_module_scale(module.self_attn, qkv, inp)
     scale_ln_fcs(module.self_attn_layer_norm, qkv, final_scales)
 
     # attn out
-    inp = input_feat[name + '.self_attn.out_proj']
+    inp = input_feat[name + ".self_attn.out_proj"]
     inp = torch.cat([x.unsqueeze(0) for x in inp], dim=0)
-    final_scales = _search_module_scale(module.self_attn.out_proj, [module.self_attn.out_proj], inp)
+    final_scales = _search_module_scale(
+        module.self_attn.out_proj, [module.self_attn.out_proj], inp
+    )
     scale_fc_fc(module.self_attn.v_proj, module.self_attn.out_proj, final_scales)
 
     # fc1
-    inp = input_feat[name + '.fc1']
+    inp = input_feat[name + ".fc1"]
     inp = torch.cat([x.unsqueeze(0) for x in inp], dim=0)
     final_scales = _search_module_scale(module.fc1, [module.fc1], inp)
     scale_ln_fcs(module.final_layer_norm, module.fc1, final_scales)
 
     # fc2
-    inp = input_feat[name + '.fc2']
+    inp = input_feat[name + ".fc2"]
     inp = torch.cat([x.unsqueeze(0) for x in inp], dim=0)
     final_scales = _search_module_scale(module.fc2, [module.fc2], inp)
     scale_fc_fc(module.fc1, module.fc2, final_scales)
 
+
 @torch.no_grad()
-def pseudo_quantize_model_weight_auto_scale(
-    model, w_bit, q_group_size, input_feat
-):
+def pseudo_quantize_model_weight_auto_scale(model, w_bit, q_group_size, input_feat):
     from transformers.models.opt.modeling_opt import OPTDecoderLayer
 
     for name, module in model.named_modules():
@@ -400,20 +431,23 @@ def pseudo_quantize_model_weight_auto_scale(
 
     for n, m in model.named_modules():
         if isinstance(m, nn.Linear):
-            m.weight.data = pseudo_quantize_tensor(m.weight.data, n_bit=w_bit, q_group_size=q_group_size)
+            m.weight.data = pseudo_quantize_tensor(
+                m.weight.data, n_bit=w_bit, q_group_size=q_group_size
+            )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     model_path = "facebook/opt-1.3b"
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
     model = AutoModelForCausalLM.from_pretrained(model_path, device_map="auto")
     input_feat = get_calib_feat(model, tokenizer)
-    pseudo_quantize_model_weight_scaleup(model, w_bit=3, q_group_size=128, input_feat=input_feat, scale_factor=2)
+    pseudo_quantize_model_weight_scaleup(
+        model, w_bit=3, q_group_size=128, input_feat=input_feat, scale_factor=2
+    )
     # pseudo_quantize_model_weight_auto_scale(model, w_bit=3, q_group_size=128, input_feat=input_feat)
-    
+
     # Evaluate the model
     model_perplexity = evaluate(model, tokenizer)
     model_size = get_model_size(model, data_width=32, group_size=128)
     print(f"\nmodel perplexity: {model_perplexity:.2f}")
     print(f"model size: {model_size/MiB:.2f} MiB")
-

@@ -46,12 +46,16 @@ class Mask:
     def causal_mask(self) -> torch.BoolTensor:
         return self.diff <= 1
 
-    def sliding_window_mask(self, window_size: int) -> torch.BoolTensor:
-        mask = (self.diff >= -window_size) & (self.causal_mask)
+    def sliding_window_mask(
+        self, window_size: int, causal: bool = True
+    ) -> torch.BoolTensor:
+        mask = self.diff >= -window_size
+        if causal:
+            mask = mask & self.causal_mask
         return mask.to(torch.bool)
 
     def global_mask(
-        self, h_indices: torch.Tensor, v_indices: torch.Tensor
+        self, h_indices: torch.Tensor, v_indices: torch.Tensor, causal: bool = True
     ) -> torch.BoolTensor:
         if (torch.max(v_indices) >= self.context_size) | (
             torch.max(h_indices) >= self.context_size
@@ -61,7 +65,8 @@ class Mask:
         mask = torch.zeros(self.context_size, self.context_size, dtype=torch.bool)
         mask[:, v_indices] = True
         mask[h_indices, :] = True
-        mask[~self.causal_mask] = False
+        if causal:
+            mask[~self.causal_mask] = False
         return mask
 
     @cached_property
@@ -69,7 +74,9 @@ class Mask:
         pass
 
     @cached_property
-    def streaming_mask(self) -> torch.BoolTensor:
+    def streaming_mask(
+        self, anchor_range: int, window_range: int, causal: bool = True
+    ) -> torch.BoolTensor:
         pass
 
 
