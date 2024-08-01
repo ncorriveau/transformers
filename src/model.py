@@ -3,9 +3,9 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 
-from transformer.attention import Attention, Mask
-from transformer.positional_encoding import PositionalEncoding
-from transformer.transformer import FeedForward, TransformerBlock
+from .transformer.attention import Attention, Mask
+from .transformer.positional_encoding import PositionalEncoding
+from .transformer.transformer import FeedForward, TransformerBlock
 
 # token embedding: this is of size (vocab_size, hidden_size)
 # and is basically a look up table for the tokens and projecting them into the hidden dim
@@ -27,6 +27,7 @@ class Config:
     num_layers: int = 6
     vocab_size: int = 10000
     dropout: float = 0.1
+    activation: nn.Module = nn.GELU
 
 
 class CausalLLM:
@@ -38,18 +39,22 @@ class CausalLLM:
         self.positional_encoding = PositionalEncoding(
             self.config.hidden_size, self.config.context_size
         )
+        self.mask = Mask.causal_mask(self.config.context_size)
         self.attention = Attention(
             self.config.hidden_size,
             self.config.num_heads_q,
             self.config.num_heads_k,
             self.config.num_heads_v,
             self.config.context_size,
-            Mask.causal_mask(self.config.context_size),
-            self.config.dropout,
-            self.config.dropout,
+            mask=self.mask,
+            attn_drop=self.config.dropout,
+            output_drop=self.config.dropout,
         )
         self.ffn = FeedForward(
-            self.config.hidden_size, self.config.ffn_size, nn.GELU, self.config.dropout
+            self.config.hidden_size,
+            self.config.ffn_size,
+            self.config.activation,
+            self.config.dropout,
         )
         self.norm = nn.LayerNorm(self.config.hidden_size)
         self.blocks = nn.ModuleList(
@@ -61,7 +66,7 @@ class CausalLLM:
                     self.norm,
                     pre_norm=False,
                 )
-                for _ in range(Config.num_layers)
+                for _ in range(self.config.num_layers)
             ]
         )
         self.head = nn.Linear(self.config.hidden_size, self.config.vocab_size)
@@ -83,3 +88,12 @@ class CausalLLM:
             x = block(x)
 
         return self.head(x)
+
+
+if __name__ == "__main__":
+    import tiktoken
+
+    enc = tiktoken.get_encoding("gpt2")
+    tokens = enc.encode("hello world")
+    tokens = torch.tensor(tokens).unsqueeze(0)
+    print(tokens)

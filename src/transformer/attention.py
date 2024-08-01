@@ -99,9 +99,10 @@ class Attention(nn.Module):
         num_heads_k: int,
         num_heads_v: int,
         context_size: int,
+        *,
         mask: torch.BoolTensor,
-        attn_drop=0.1,
-        output_drop=0.1,
+        attn_drop: float = 0.1,
+        output_drop: float = 0.1,
     ):
         super().__init__()
         self.hidden_size = hidden_size

@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
-from attention import Attention
-from positional_encoding import PositionalEncoding, SinusoidalPE
+
+from .attention import Attention
+from .positional_encoding import PositionalEncoding, SinusoidalPE
 
 
 class FeedForward(nn.Module):
