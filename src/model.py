@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .transformer.attention import Attention, Mask
 from .transformer.positional_encoding import PositionalEncoding
@@ -25,13 +26,14 @@ class Config:
     context_size: int = 512
     ffn_size: int = 2048
     num_layers: int = 6
-    vocab_size: int = 10000
+    vocab_size: int = 50304
     dropout: float = 0.1
     activation: nn.Module = nn.GELU
 
 
-class CausalLLM:
+class CausalLLM(nn.Module):
     def __init__(self, config: Config):
+        super().__init__()
         self.config = config
         self.token_embedding = nn.Embedding(
             self.config.vocab_size, self.config.hidden_size
@@ -39,14 +41,14 @@ class CausalLLM:
         self.positional_encoding = PositionalEncoding(
             self.config.hidden_size, self.config.context_size
         )
-        self.mask = Mask.causal_mask(self.config.context_size)
+        self.mask = Mask(self.config.context_size)
         self.attention = Attention(
             self.config.hidden_size,
             self.config.num_heads_q,
             self.config.num_heads_k,
             self.config.num_heads_v,
             self.config.context_size,
-            mask=self.mask,
+            mask=self.mask.causal_mask,
             attn_drop=self.config.dropout,
             output_drop=self.config.dropout,
         )
@@ -94,6 +96,29 @@ if __name__ == "__main__":
     import tiktoken
 
     enc = tiktoken.get_encoding("gpt2")
-    tokens = enc.encode("hello world")
+    tokens = enc.encode("It's a good itme to")
     tokens = torch.tensor(tokens).unsqueeze(0)
-    print(tokens)
+    print(tokens.size())  # 1 x num_tokens
+    torch.manual_seed(42)
+    model = CausalLLM(Config())
+    model.eval()
+
+    while tokens.size(1) < 10:
+        with torch.no_grad():
+            out = model(tokens)
+            print(out.size())
+
+            logits = out[:, -1, :]
+            print(logits[:5])
+
+            probs = F.softmax(logits, dim=-1)
+            print(probs.size())
+            topk_probs, tokp_indices = torch.topk(probs, 50, dim=-1)
+            selected = torch.multinomial(topk_probs, num_samples=1)
+            print(selected.size())
+
+            next_token = torch.gather(tokp_indices, -1, selected)
+            tokens = torch.cat([tokens, next_token], dim=1)
+            print(tokens.size())
+
+    print(enc.decode(tokens.squeeze().tolist()))

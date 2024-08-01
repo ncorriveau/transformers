@@ -145,18 +145,20 @@ class Attention(nn.Module):
 
         # must be context size, context size for the attention mask
         assert mask.size() == (context_size, context_size), "Mask size is invalid"
-        self.mask = mask.view(1, 1, context_size, context_size)
+        self.mask = ~mask.view(1, 1, context_size, context_size)
 
     def forward(self, input: torch.Tensor):
         B, S, D = input.size()  # batch size, sequence length, hidden dim
 
         Q: torch.Tensor = self.WQ(input).reshape(
-            B, num_heads_q // num_heads_k, num_heads_k, S, self.dim_q_k
+            B, self.num_heads_q // self.num_heads_k, self.num_heads_k, S, self.dim_q_k
         )
-        K: torch.Tensor = self.WK(input).reshape(B, num_heads_k, S, self.dim_q_k)
-        V: torch.Tensor = self.WV(input).reshape(B, num_heads_v, S, self.dim_v)
+        K: torch.Tensor = self.WK(input).reshape(B, self.num_heads_k, S, self.dim_q_k)
+        V: torch.Tensor = self.WV(input).reshape(B, self.num_heads_v, S, self.dim_v)
 
-        attn: torch.Tensor = (Q @ K.transpose(-2, -1)).reshape(B, num_heads_q, S, S)
+        attn: torch.Tensor = (Q @ K.transpose(-2, -1)).reshape(
+            B, self.num_heads_q, S, S
+        )
         attn = attn / math.sqrt(K.size(-1))
 
         # take only the mask tokens up to the sequence length
@@ -165,9 +167,12 @@ class Attention(nn.Module):
 
         # now we can multiply the attention with the value matrix
         x: torch.Tensor = (
-            attn.reshape(B, num_heads_q // num_heads_v, num_heads_v, S, S) @ V
+            attn.reshape(
+                B, self.num_heads_q // self.num_heads_v, self.num_heads_v, S, S
+            )
+            @ V
         )
-        x = x.reshape(B, S, num_heads_q * self.dim_v)
+        x = x.reshape(B, S, self.num_heads_q * self.dim_v)
         return self.W_0(x)
 
 

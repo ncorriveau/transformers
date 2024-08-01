@@ -36,6 +36,7 @@ class TransformerBlock(nn.Module):
         norm: nn.Module,
         pre_norm: bool = False,
     ):
+        super().__init__()
         self.attention = attention
         self.positional_encoding = positional_encoding
         self.ffn = ffn
