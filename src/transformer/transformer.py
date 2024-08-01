@@ -35,7 +35,17 @@ class TransformerBlock(nn.Module):
         norm: nn.Module,
         pre_norm: bool = False,
     ):
-        pass
+        self.attention = attention
+        self.positional_encoding = positional_encoding
+        self.ffn = ffn
+        self.norm = norm
+        self.pre_norm = pre_norm
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        pass
+        if self.pre_norm:
+            x = x + self.attention(self.norm(x))
+            x = x + self.ffn(self.norm(x))
+        else:
+            x = self.norm(x + self.attention(x))
+            x = self.norm(x + self.ffn(x))
+        return x
