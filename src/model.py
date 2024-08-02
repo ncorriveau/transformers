@@ -31,47 +31,30 @@ class Config:
     activation: nn.Module = nn.GELU
 
 
+@dataclass
+class ModelConfig:
+    embedding: nn.Embedding
+    positional_encoding: PositionalEncoding
+    mask: Mask
+    attention: Attention
+    ffn: FeedForward
+    layer_norm: nn.LayerNorm
+    transformer_blocks: nn.ModuleList
+    head: nn.Linear
+
+
 class CausalLLM(nn.Module):
-    def __init__(self, config: Config):
+    def __init__(self, model_config: ModelConfig):
         super().__init__()
-        self.config = config
-        self.token_embedding = nn.Embedding(
-            self.config.vocab_size, self.config.hidden_size
-        )
-        self.positional_encoding = PositionalEncoding(
-            self.config.hidden_size, self.config.context_size
-        )
-        self.mask = Mask(self.config.context_size)
-        self.attention = Attention(
-            self.config.hidden_size,
-            self.config.num_heads_q,
-            self.config.num_heads_k,
-            self.config.num_heads_v,
-            self.config.context_size,
-            mask=self.mask.causal_mask,
-            attn_drop=self.config.dropout,
-            output_drop=self.config.dropout,
-        )
-        self.ffn = FeedForward(
-            self.config.hidden_size,
-            self.config.ffn_size,
-            self.config.activation,
-            self.config.dropout,
-        )
-        self.norm = nn.LayerNorm(self.config.hidden_size)
-        self.blocks = nn.ModuleList(
-            [
-                TransformerBlock(
-                    self.attention,
-                    self.positional_encoding,
-                    self.ffn,
-                    self.norm,
-                    pre_norm=False,
-                )
-                for _ in range(self.config.num_layers)
-            ]
-        )
-        self.head = nn.Linear(self.config.hidden_size, self.config.vocab_size)
+        self.config = model_config
+        self.token_embedding = self.config.embedding
+        self.positional_encoding = self.config.positional_encoding
+        self.mask = self.config.mask
+        self.attention = self.config.attention
+        self.ffn = self.config.ffn
+        self.norm = self.config.layer_norm
+        self.blocks = self.config.transformer_blocks
+        self.head = self.config.head
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x is of size batch, seq_len
@@ -100,7 +83,46 @@ if __name__ == "__main__":
     tokens = torch.tensor(tokens).unsqueeze(0)
     print(tokens.size())  # 1 x num_tokens
     torch.manual_seed(42)
-    model = CausalLLM(Config())
+
+    config = Config()
+    token_embedding = nn.Embedding(config.vocab_size, config.hidden_size)
+    positional_encoding = PositionalEncoding(config.hidden_size, config.context_size)
+    mask = Mask(config.context_size)
+    attention = Attention(
+        config.hidden_size,
+        config.num_heads_q,
+        config.num_heads_k,
+        config.num_heads_v,
+        config.context_size,
+        mask=mask.causal_mask,
+        attn_drop=config.dropout,
+        output_drop=config.dropout,
+    )
+    ffn = FeedForward(
+        config.hidden_size,
+        config.ffn_size,
+        config.activation,
+        config.dropout,
+    )
+    norm = nn.LayerNorm(config.hidden_size)
+    head = nn.Linear(config.hidden_size, config.vocab_size)
+    block = nn.ModuleList(
+        [
+            TransformerBlock(
+                attention,
+                positional_encoding,
+                ffn,
+                norm,
+                pre_norm=False,
+            )
+            for _ in range(config.num_layers)
+        ]
+    )
+    model_config = ModelConfig(
+        token_embedding, positional_encoding, mask, attention, ffn, norm, block, head
+    )
+
+    model = CausalLLM(model_config)
     model.eval()
 
     while tokens.size(1) < 10:
