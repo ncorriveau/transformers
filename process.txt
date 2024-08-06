@@ -1,9 +1,10 @@
 
 Next things to do: 
-- create model training loop using the generalized model based off a config (can hard code for now but then we want it to be a yaml)
+- run model to make sure it works to start [DONE]
+- write simple training loop with shakespeare.txt 
+- write yaml config reading / validation 
 - create easy testing framework with the shakespeare.txt 
-- run model to make sure it works to start 
 - add in additional features (e.g. more weight tying, layer norms, RoPE, cross layer attention, etc )
 - tests
 - start working on different attention engines? 
-- start building simple monitoring server 
+- start building simple monitoring server
