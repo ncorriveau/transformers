@@ -156,7 +156,7 @@ class Attention(nn.Module):
         K: torch.Tensor = self.WK(input).reshape(B, self.num_heads_k, S, self.dim_q_k)
         V: torch.Tensor = self.WV(input).reshape(B, self.num_heads_v, S, self.dim_v)
 
-        attn: torch.Tensor = (Q @ K.transpose(-2, -1)).reshape(
+        attn: torch.Tensor = (Q @ K.unsqueeze(1).transpose(-2, -1)).reshape(
             B, self.num_heads_q, S, S
         )
         attn = attn / math.sqrt(K.size(-1))
@@ -166,18 +166,15 @@ class Attention(nn.Module):
         attn = attn.softmax(dim=-1)
 
         # now we can multiply the attention with the value matrix
-        x: torch.Tensor = (
-            attn.reshape(
-                B, self.num_heads_q // self.num_heads_v, self.num_heads_v, S, S
-            )
-            @ V
-        )
+        x: torch.Tensor = attn.reshape(
+            B, self.num_heads_q // self.num_heads_v, self.num_heads_v, S, S
+        ) @ V.unsqueeze(1)
         x = x.reshape(B, S, self.num_heads_q * self.dim_v)
         return self.W_0(x)
 
 
 if __name__ == "__main__":
-    B = 1  # batch size
+    B = 32  # batch size
     S = 10  # sequence length
     H = 768  # hidden size
 
@@ -194,7 +191,7 @@ if __name__ == "__main__":
 
     input = torch.rand(B, S, H)
     attention = Attention(
-        hidden_size, num_heads_q, num_heads_k, num_heads_v, context_size, mask
+        hidden_size, num_heads_q, num_heads_k, num_heads_v, context_size, mask=mask
     )
     output = attention(input)
     print(output.size())
