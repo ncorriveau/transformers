@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .transformer.attention import Attention, Mask
-from .transformer.positional_encoding import PositionalEncoding
-from .transformer.transformer import FeedForward, TransformerBlock
+from transformer.attention import Attention, Mask
+from transformer.positional_encoding import PositionalEncoding
+from transformer.transformer import FeedForward, TransformerBlock
 
 # token embedding: this is of size (vocab_size, hidden_size)
 # and is basically a look up table for the tokens and projecting them into the hidden dim
@@ -14,21 +14,6 @@ from .transformer.transformer import FeedForward, TransformerBlock
 # positional encoding: this is of size (context_size, hidden_size) because it is of the form
 # (idx) -> hidden_dim e.g. it takes the tokens index in the total context size and
 # maps it to some hidden dimension vector that represents its position in the sequence
-
-
-# TODO: read in model parameters from config
-@dataclass
-class Config:
-    hidden_size: int = 512
-    num_heads_q: int = 8
-    num_heads_k: int = 8
-    num_heads_v: int = 8
-    context_size: int = 512
-    ffn_size: int = 2048
-    num_layers: int = 6
-    vocab_size: int = 50304
-    dropout: float = 0.1
-    activation: nn.Module = nn.GELU
 
 
 @dataclass
@@ -56,7 +41,7 @@ class CausalLLM(nn.Module):
         self.blocks = self.config.transformer_blocks
         self.head = self.config.head
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, targets: torch.Tensor = None) -> torch.Tensor:
         # x is of size batch, seq_len
         B, S = x.size()
 
@@ -75,14 +60,19 @@ class CausalLLM(nn.Module):
         return self.head(x)
 
 
-if __name__ == "__main__":
-    import tiktoken
-
-    enc = tiktoken.get_encoding("gpt2")
-    tokens = enc.encode("It's a good itme to")
-    tokens = torch.tensor(tokens).unsqueeze(0)
-    print(tokens.size())  # 1 x num_tokens
-    torch.manual_seed(42)
+def load_model_config(model: str) -> ModelConfig:
+    @dataclass
+    class Config:
+        hidden_size: int = 512
+        num_heads_q: int = 8
+        num_heads_k: int = 8
+        num_heads_v: int = 8
+        context_size: int = 512
+        ffn_size: int = 2048
+        num_layers: int = 6
+        vocab_size: int = 50304
+        dropout: float = 0.1
+        activation: nn.Module = nn.GELU
 
     config = Config()
     token_embedding = nn.Embedding(config.vocab_size, config.hidden_size)
@@ -118,10 +108,35 @@ if __name__ == "__main__":
             for _ in range(config.num_layers)
         ]
     )
-    model_config = ModelConfig(
+    return ModelConfig(
         token_embedding, positional_encoding, mask, attention, ffn, norm, block, head
     )
 
+
+if __name__ == "__main__":
+    import tiktoken
+
+    enc = tiktoken.get_encoding("gpt2")
+    tokens = enc.encode("It's a good itme to")
+    tokens = torch.tensor(tokens).unsqueeze(0)
+    print(tokens.size())  # 1 x num_tokens
+    torch.manual_seed(42)
+
+    # TODO: read in model parameters from config
+    @dataclass
+    class Config:
+        hidden_size: int = 512
+        num_heads_q: int = 8
+        num_heads_k: int = 8
+        num_heads_v: int = 8
+        context_size: int = 512
+        ffn_size: int = 2048
+        num_layers: int = 6
+        vocab_size: int = 50304
+        dropout: float = 0.1
+        activation: nn.Module = nn.GELU
+
+    model_config = load_model_config("gpt2")
     model = CausalLLM(model_config)
     model.eval()
 
