@@ -71,7 +71,7 @@ def train(model: str, optimizer_config: str, epochs: int):
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True)
 
     # training loop
-    for epoch in range(epochs):
+    for _ in range(epochs):
         step = 0
         for x, y in data_loader:
             optimizer.zero_grad()

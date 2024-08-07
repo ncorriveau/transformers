@@ -20,10 +20,9 @@ from transformer.transformer import FeedForward, TransformerBlock
 class ModelConfig:
     embedding: nn.Embedding
     positional_encoding: PositionalEncoding
-    mask: Mask
     attention: Attention
     ffn: FeedForward
-    layer_norm: nn.LayerNorm
+    norm: nn.Module
     transformer_blocks: nn.ModuleList
     head: nn.Linear
 
@@ -34,10 +33,9 @@ class CausalLLM(nn.Module):
         self.config = model_config
         self.token_embedding = self.config.embedding
         self.positional_encoding = self.config.positional_encoding
-        self.mask = self.config.mask
         self.attention = self.config.attention
         self.ffn = self.config.ffn
-        self.norm = self.config.layer_norm
+        self.norm = self.config.norm
         self.blocks = self.config.transformer_blocks
         self.head = self.config.head
 
