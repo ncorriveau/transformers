@@ -1,0 +1,27 @@
+common:
+  hidden_size: 512
+  context_size: 128
+  vocab_size: 50304
+  num_layers: 32 
+
+attention:
+  num_heads_q: 8
+  num_heads_k: 8
+  num_heads_v: 8
+  mask: 'causal'
+  attn_drop: 0.1
+  output_drop: 0.1
+
+# figure out how to add additional args to all of these 
+positional_encoding:
+  pe_type: 'sinusoidal'
+
+feed_forward:
+  ffn_size: 2048
+  activation: 'gelu'
+  drop: 0.1
+
+transformer:
+  norm_placement: 'pre'
+  norm_type: 'layer'
+
