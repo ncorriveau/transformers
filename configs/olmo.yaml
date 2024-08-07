@@ -9,6 +9,7 @@ attention:
   num_heads_k: 8
   num_heads_v: 8
   mask: 'causal'
+  is_causal: True
   attn_drop: 0.1
   output_drop: 0.1
 
@@ -18,10 +19,10 @@ positional_encoding:
 
 feed_forward:
   ffn_size: 2048
-  activation: 'gelu'
-  drop: 0.1
+  activation_func: 'gelu'
+  dropout: 0.1
 
-transformer:
+transformer_block:
   norm_placement: 'pre'
   norm_type: 'layer'
 

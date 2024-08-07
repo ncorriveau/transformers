@@ -55,29 +55,28 @@ class ModelCommon(BaseModel):
         6, description="The number of Transformer layers in the model"
     )
 
-    @validator("hidden_size", "context_size", "vocab_size", "num_layers")
-    def must_be_positive(cls, v):
+    @field_validator("hidden_size", "context_size", "vocab_size", "num_layers")
+    def must_be_positive(cls, v: int):
         if v <= 0:
             raise ValueError(f"Must be positive")
         return v
 
 
 class AttentionConfig(BaseModel):
-    hidden_size: int = Field(512, description="The hidden size of the model")
-    num_heads_q: int = Field(8, description="Number of heads for query")
-    num_heads_k: int = Field(8, description="Number of heads for key")
-    num_heads_v: int = Field(8, description="Number of heads for value")
-    context_size: int = Field(1024, description="The context size of the model")
+    num_heads_q: int = Field(..., description="Number of heads for query")
+    num_heads_k: int = Field(..., description="Number of heads for key")
+    num_heads_v: int = Field(..., description="Number of heads for value")
 
-    attn_drop: float = Field(0.1, description="Dropout rate for attention")
-    output_drop: float = Field(0.1, description="Dropout rate for output")
+    attn_drop: float = Field(..., description="Dropout rate for attention")
+    output_drop: float = Field(..., description="Dropout rate for output")
 
     mask: SupportedMask = Field(
         SupportedMask.CAUSAL.value, description="The type of mask to use"
     )
-    is_causal: bool = Field(True, description="Whether the mask is causal or not")
+    is_causal: bool = Field(..., description="Whether the mask is causal or not")
 
-    @field_validator("num_q_heads", "num_k_heads", "num_v_heads", "hidden_size")
+    @field_validator("num_heads_q", "num_heads_k", "num_heads_v")
+    @classmethod
     def must_be_positive(cls, v):
         if v <= 0:
             raise ValueError(f"Must be positive")
@@ -92,26 +91,28 @@ class AttentionConfig(BaseModel):
 
 class PEConfig(BaseModel):
     pe_type: SupportedPE = Field(
-        SupportedPE.SINUSOIDAL.value,
+        ...,
         description="The type of positional encoding to use",
     )
 
 
 class FeedForwardConfig(BaseModel):
-    ffn_size: int = Field(2048, description="The size of the feed forward network")
+    ffn_size: int = Field(..., description="The size of the feed forward network")
     activation_func: SupportedActivations = Field(
-        SupportedActivations.GELU.value, description="The activation function to use"
+        ..., description="The activation function to use"
     )
-    dropout: float = Field(0.1, description="Dropout rate for feed forward network")
+    dropout: float = Field(..., description="Dropout rate for feed forward network")
 
-    @validator("hidden_size", "ffn_size")
-    def must_be_positive(cls, v):
+    @field_validator("ffn_size")
+    @classmethod
+    def must_be_positive(cls, v: int):
         if v <= 0:
             raise ValueError(f"Must be positive")
         return v
 
-    @validator("dropout")
-    def must_be_between_0_and_1(cls, v):
+    @field_validator("dropout")
+    @classmethod
+    def must_be_between_0_and_1(cls, v: int):
         if v < 0 or v > 1:
             raise ValueError(f"Must be between 0 and 1")
         return v
@@ -119,11 +120,11 @@ class FeedForwardConfig(BaseModel):
 
 class TransformerBlockConfig(BaseModel):
     norm_placement: SupportedNormPlacements = Field(
-        SupportedNormPlacements.PRE.value,
+        ...,
         description="The type of normalization to use",
     )
     norm_type: SupportedNorms = Field(
-        SupportedNorms.LAYER.value, description="The type of normalization to use"
+        ..., description="The type of normalization to use"
     )
 
 
@@ -145,31 +146,30 @@ def build_model_config(file_path: str) -> ModelConfig:
     ffn_config = FeedForwardConfig(**config["feed_forward"])
     transformer_block_config = TransformerBlockConfig(**config["transformer_block"])
 
+    # TODO: we need to make the mask obj dynamic here.
     attn = Attention(
-        hidden_size=attention_config.hidden_size,
+        hidden_size=model_common.hidden_size,
         num_heads_q=attention_config.num_heads_q,
         num_heads_k=attention_config.num_heads_k,
         num_heads_v=attention_config.num_heads_v,
-        context_size=attention_config.context_size,
-        mask=Mask(
-            attention_config.context_size, attention_config.mask
-        ).causal_mask,  # TODO: update this to be dynamic
+        context_size=model_common.context_size,
+        mask=Mask(model_common.context_size).causal_mask,
         attn_drop=attention_config.attn_drop,
         output_drop=attention_config.output_drop,
     )
-    pe_model: PositionalEncoding = TYPE_TO_IMPLEMENTATION[pe_config.pe_type]
+    pe_model: PositionalEncoding = TYPE_TO_IMPLEMENTATION[pe_config.pe_type.value]
     pe = pe_model(
         hidden_size=model_common.hidden_size,
         context_size=model_common.context_size,
     )
-    activation = TYPE_TO_IMPLEMENTATION[ffn_config.activation_func]
+    activation = TYPE_TO_IMPLEMENTATION[ffn_config.activation_func.value]
     ffn = FeedForward(
         hidden_size=model_common.hidden_size,
         ffn_size=ffn_config.ffn_size,
         activation=activation,
         output_drop=ffn_config.dropout,
     )
-    norm = TYPE_TO_IMPLEMENTATION[transformer_block_config.norm_type]
+    norm = TYPE_TO_IMPLEMENTATION[transformer_block_config.norm_type.value]
     block = nn.ModuleList(
         [
             TransformerBlock(
