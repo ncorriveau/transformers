@@ -3,7 +3,8 @@ from typing import Any, Literal
 
 import torch.nn as nn
 import yaml
-from pydantic import BaseModel, Field, field_validator, validator
+from pydantic import BaseModel, Field, field_validator, model_validator, validator
+from typing_extensions import Self
 
 from model import ModelConfig
 from transformer.attention import Attention, Mask
@@ -48,24 +49,18 @@ TYPE_TO_IMPLEMENTATION = {
 
 
 class ModelCommon(BaseModel):
-    hidden_size: int = Field(512, description="The hidden size of the model")
-    context_size: int = Field(1024, description="The context size of the model")
-    vocab_size: int = Field(50304, description="The size of the vocabulary")
+    hidden_size: int = Field(..., gt=0, description="The hidden size of the model")
+    context_size: int = Field(..., gt=0, description="The context size of the model")
+    vocab_size: int = Field(..., gt=0, description="The size of the vocabulary")
     num_layers: int = Field(
-        6, description="The number of Transformer layers in the model"
+        ..., gt=0, description="The number of Transformer layers in the model"
     )
-
-    @field_validator("hidden_size", "context_size", "vocab_size", "num_layers")
-    def must_be_positive(cls, v: int):
-        if v <= 0:
-            raise ValueError(f"Must be positive")
-        return v
 
 
 class AttentionConfig(BaseModel):
-    num_heads_q: int = Field(..., description="Number of heads for query")
-    num_heads_k: int = Field(..., description="Number of heads for key")
-    num_heads_v: int = Field(..., description="Number of heads for value")
+    num_heads_q: int = Field(..., gt=0, description="Number of query heads")
+    num_heads_k: int = Field(..., gt=0, description="Number of key heads")
+    num_heads_v: int = Field(..., gt=0, description="Number of value heads")
 
     attn_drop: float = Field(..., description="Dropout rate for attention")
     output_drop: float = Field(..., description="Dropout rate for output")
@@ -75,18 +70,21 @@ class AttentionConfig(BaseModel):
     )
     is_causal: bool = Field(..., description="Whether the mask is causal or not")
 
-    @field_validator("num_heads_q", "num_heads_k", "num_heads_v")
-    @classmethod
-    def must_be_positive(cls, v):
-        if v <= 0:
-            raise ValueError(f"Must be positive")
-        return v
-
     @field_validator("attn_drop", "output_drop")
+    @classmethod
     def must_be_between_0_and_1(cls, v):
         if v < 0 or v > 1:
             raise ValueError(f"Must be between 0 and 1")
         return v
+
+    @model_validator(mode="after")
+    def check_head_compatability(self) -> Self:
+        assert (
+            self.num_heads_q % self.num_heads_k == 0
+        ), "Number of query heads must be divisible by the number of key heads"
+        assert (
+            self.num_heads_q % self.num_heads_v == 0
+        ), "Number of query heads must be divisible by the number of value heads"
 
 
 class PEConfig(BaseModel):
@@ -97,18 +95,11 @@ class PEConfig(BaseModel):
 
 
 class FeedForwardConfig(BaseModel):
-    ffn_size: int = Field(..., description="The size of the feed forward network")
+    ffn_size: int = Field(..., gt=0, description="The size of the feed forward network")
     activation_func: SupportedActivations = Field(
         ..., description="The activation function to use"
     )
     dropout: float = Field(..., description="Dropout rate for feed forward network")
-
-    @field_validator("ffn_size")
-    @classmethod
-    def must_be_positive(cls, v: int):
-        if v <= 0:
-            raise ValueError(f"Must be positive")
-        return v
 
     @field_validator("dropout")
     @classmethod
@@ -134,6 +125,7 @@ def load_config(file_path: str) -> dict[str, Any]:
     return yaml_data
 
 
+# yes this is ugly, maybe a better way but we'll see if it works for now.
 def build_model_config(file_path: str) -> ModelConfig:
     """
     Loads in the model configs and validates values.

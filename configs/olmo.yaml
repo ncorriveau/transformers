@@ -6,7 +6,7 @@ common:
 
 attention:
   num_heads_q: 8
-  num_heads_k: 8
+  num_heads_k: 5
   num_heads_v: 8
   mask: 'causal'
   is_causal: True
