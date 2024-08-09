@@ -1,7 +1,10 @@
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Literal
+from functools import partial
+from typing import Any, Callable, Dict, Literal
 
 import torch.nn as nn
+import torch.optim as optim
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator, validator
 from typing_extensions import Self
@@ -119,6 +122,32 @@ class TransformerBlockConfig(BaseModel):
     )
 
 
+@dataclass
+class TrainConfig:
+    partial_optimizer: Callable
+    optimizer_name: str
+    args: Dict[str, Any]
+    batch_size: int
+
+
+class TrainingConfig(BaseModel):
+    optimizer_name: str = Field(
+        ..., description="The name of the optimizer to use e.g. AdamW"
+    )
+    args: Dict[str, Any] = Field(default_factory=dict)
+    batch_size: int = Field(..., gt=0, description="The batch size to use")
+
+    @field_validator("optimizer_name")
+    @classmethod
+    def validate_optimizer_name(cls, v: str):
+        if not hasattr(optim, v):
+            raise ValueError(f"'{v}' is not a valid optimizer in torch.optim")
+        return v
+
+    class Config:
+        extra = "allow"  # This allows for additional fields in the args
+
+
 def load_config(file_path: str) -> dict[str, Any]:
     with open(file_path, "r") as file:
         yaml_data = yaml.safe_load(file)
@@ -192,6 +221,20 @@ def build_model_config(file_path: str) -> ModelConfig:
     )
 
 
+def build_training_config(training_config: str) -> TrainConfig:
+    config = load_config(training_config)
+    validated_config = TrainingConfig(**config)
+    optimizer = getattr(optim, validated_config.optimizer_name)
+    partial_optimizer = partial(optimizer, **validated_config.args)
+    return TrainConfig(
+        partial_optimizer=partial_optimizer,
+        optimizer_name=validated_config.optimizer_name,
+        args=validated_config.args,
+        batch_size=validated_config.batch_size,
+    )
+
+
 if __name__ == "__main__":
-    config = build_model_config("./configs/models/olmo.yaml")
-    print(config)
+    model_config = build_model_config("./configs/models/olmo.yaml")
+    training_config = build_training_config("./configs/training/default.yaml")
+    print(training_config)
