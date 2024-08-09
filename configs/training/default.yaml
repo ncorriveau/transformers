@@ -4,3 +4,4 @@ args:
   betas: [0.9, 0.98]
 
 batch_size: 32
+epochs: 1

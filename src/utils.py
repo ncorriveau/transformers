@@ -123,19 +123,21 @@ class TransformerBlockConfig(BaseModel):
 
 
 @dataclass
-class TrainConfig:
+class TrainingConfig:
     partial_optimizer: Callable
     optimizer_name: str
     args: Dict[str, Any]
     batch_size: int
+    epochs: int
 
 
-class TrainingConfig(BaseModel):
+class TrainConfig(BaseModel):
     optimizer_name: str = Field(
         ..., description="The name of the optimizer to use e.g. AdamW"
     )
     args: Dict[str, Any] = Field(default_factory=dict)
     batch_size: int = Field(..., gt=0, description="The batch size to use")
+    epochs: int = Field(..., gt=0, description="The number of epochs to train for")
 
     @field_validator("optimizer_name")
     @classmethod
@@ -221,16 +223,17 @@ def build_model_config(file_path: str) -> ModelConfig:
     )
 
 
-def build_training_config(training_config: str) -> TrainConfig:
+def build_training_config(training_config: str) -> TrainingConfig:
     config = load_config(training_config)
-    validated_config = TrainingConfig(**config)
+    validated_config = TrainConfig(**config)
     optimizer = getattr(optim, validated_config.optimizer_name)
     partial_optimizer = partial(optimizer, **validated_config.args)
-    return TrainConfig(
+    return TrainingConfig(
         partial_optimizer=partial_optimizer,
         optimizer_name=validated_config.optimizer_name,
         args=validated_config.args,
         batch_size=validated_config.batch_size,
+        epochs=validated_config.epochs,
     )
 
 
