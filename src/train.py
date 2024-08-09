@@ -4,6 +4,7 @@ Training loop for a generic LLM model here
 
 from dataclasses import dataclass
 
+import click
 import tiktoken
 import torch
 import torch.nn as nn
@@ -11,8 +12,8 @@ import torch.nn.functional as F
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
-from model import CausalLLM, ModelConfig
-from utils import TrainingConfig, build_model_config, build_training_config
+from .model import CausalLLM, ModelConfig
+from .utils import TrainingConfig, build_model_config, build_training_config
 
 
 class TokenDataSet(torch.utils.data.Dataset):
@@ -41,6 +42,10 @@ class TokenDataSet(torch.utils.data.Dataset):
         return f"TokenDataSet with {len(self.tokens)} tokens"
 
 
+@click.command()
+@click.option("--model-config-path", type=str, required=True)
+@click.option("--training-config-path", type=str, required=True)
+@click.option("--data-path", type=str, required=True)
 def train(model_config_path: str, training_config_path: str, data_path: str):
     model_config: ModelConfig = build_model_config(model_config_path)
     training_config: TrainingConfig = build_training_config(training_config_path)
@@ -70,7 +75,4 @@ def train(model_config_path: str, training_config_path: str, data_path: str):
 
 
 if __name__ == "__main__":
-    model_path = "./configs/models/olmo.yaml"
-    training_path = "./configs/training/default.yaml"
-    data_path = "./data/tiny_shakespeare.txt"
-    train(model_path, training_path, data_path)
+    train()

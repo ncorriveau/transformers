@@ -9,10 +9,10 @@ import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator, validator
 from typing_extensions import Self
 
-from model import Common, ModelConfig
-from transformer.attention import Attention, Mask
-from transformer.positional_encoding import PositionalEncoding, SinusoidalPE
-from transformer.transformer import FeedForward, TransformerBlock
+from .model import Common, ModelConfig
+from .transformer.attention import Attention, Mask
+from .transformer.positional_encoding import PositionalEncoding, SinusoidalPE
+from .transformer.transformer import FeedForward, TransformerBlock
 
 
 class SupportedPE(Enum):

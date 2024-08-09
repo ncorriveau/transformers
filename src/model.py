@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from transformer.attention import Attention, Mask
-from transformer.positional_encoding import PositionalEncoding
-from transformer.transformer import FeedForward, TransformerBlock
+from .transformer.attention import Attention, Mask
+from .transformer.positional_encoding import PositionalEncoding
+from .transformer.transformer import FeedForward, TransformerBlock
 
 # token embedding: this is of size (vocab_size, hidden_size)
 # and is basically a look up table for the tokens and projecting them into the hidden dim
