@@ -6,7 +6,7 @@ import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator, validator
 from typing_extensions import Self
 
-from model import ModelConfig
+from model import Common, ModelConfig
 from transformer.attention import Attention, Mask
 from transformer.positional_encoding import PositionalEncoding, SinusoidalPE
 from transformer.transformer import FeedForward, TransformerBlock
@@ -161,7 +161,9 @@ def build_model_config(file_path: str) -> ModelConfig:
         activation=activation,
         output_drop=ffn_config.dropout,
     )
-    norm = TYPE_TO_IMPLEMENTATION[transformer_block_config.norm_type.value]
+    norm = TYPE_TO_IMPLEMENTATION[transformer_block_config.norm_type.value](
+        model_common.hidden_size
+    )
     block = nn.ModuleList(
         [
             TransformerBlock(
@@ -176,6 +178,7 @@ def build_model_config(file_path: str) -> ModelConfig:
     )
     token_embedding = nn.Embedding(model_common.vocab_size, model_common.hidden_size)
     head = nn.Linear(model_common.hidden_size, model_common.vocab_size)
+    common = Common(**model_common.model_dump())
 
     return ModelConfig(
         embedding=token_embedding,
@@ -185,6 +188,7 @@ def build_model_config(file_path: str) -> ModelConfig:
         norm=norm,
         transformer_blocks=block,
         head=head,
+        common=common,
     )
 
 

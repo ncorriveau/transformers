@@ -17,6 +17,14 @@ from transformer.transformer import FeedForward, TransformerBlock
 
 
 @dataclass
+class Common:
+    hidden_size: int
+    context_size: int
+    num_layers: int
+    vocab_size: int
+
+
+@dataclass
 class ModelConfig:
     embedding: nn.Embedding
     positional_encoding: PositionalEncoding
@@ -25,6 +33,7 @@ class ModelConfig:
     norm: nn.Module
     transformer_blocks: nn.ModuleList
     head: nn.Linear
+    common: Common
 
 
 class CausalLLM(nn.Module):

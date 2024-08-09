@@ -10,7 +10,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from model import CausalLLM, ModelConfig, load_model_config
+from model import CausalLLM, ModelConfig
+from utils import build_model_config
 
 
 @dataclass
@@ -51,9 +52,8 @@ class TokenDataSet(torch.utils.data.Dataset):
 
 
 def train(model: str, optimizer_config: str, epochs: int):
-
-    # load model config - this should include seq
-    model_config: ModelConfig = load_model_config(model)
+    model_path = f"./configs/{model}.yaml"
+    model_config: ModelConfig = build_model_config(model_path)
 
     # load optimizer parameters
     optimizer_params: OptimizerConfig = load_optimizer_params(optimizer_config)
@@ -75,7 +75,7 @@ def train(model: str, optimizer_config: str, epochs: int):
         step = 0
         for x, y in data_loader:
             optimizer.zero_grad()
-            # shape B, S, V
+            # shape B, S, Vocab size
             output = model(x)
             loss = F.cross_entropy(output.view(-1, output.size(-1)), y.view(-1))
             loss.backward()
@@ -87,4 +87,4 @@ def train(model: str, optimizer_config: str, epochs: int):
 
 
 if __name__ == "__main__":
-    train("gpt2", "adamw", 1)
+    train("olmo", "adamw", 1)
