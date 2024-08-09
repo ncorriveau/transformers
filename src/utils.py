@@ -193,5 +193,5 @@ def build_model_config(file_path: str) -> ModelConfig:
 
 
 if __name__ == "__main__":
-    config = build_model_config("./configs/olmo.yaml")
+    config = build_model_config("./configs/models/olmo.yaml")
     print(config)
