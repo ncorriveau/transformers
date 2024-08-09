@@ -8,21 +8,11 @@ import tiktoken
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
+from torch.optim import Optimizer
+from torch.utils.data import DataLoader
 
 from model import CausalLLM, ModelConfig
-from utils import build_model_config
-
-
-@dataclass
-class OptimizerConfig:
-    lr: float
-    betas: float
-
-
-# TODO fill out to read in from config yaml
-def load_optimizer_params(optimizer_config: str):
-    return OptimizerConfig(lr=3e-4, betas=(0.9, 0.999))
+from utils import TrainingConfig, build_model_config, build_training_config
 
 
 class TokenDataSet(torch.utils.data.Dataset):
@@ -51,32 +41,25 @@ class TokenDataSet(torch.utils.data.Dataset):
         return f"TokenDataSet with {len(self.tokens)} tokens"
 
 
-def train(model: str, optimizer_config: str, epochs: int):
-    model_path = f"./configs/{model}.yaml"
-    model_config: ModelConfig = build_model_config(model_path)
+def train(model_config_path: str, training_config_path: str, data_path: str):
+    model_config: ModelConfig = build_model_config(model_config_path)
+    training_config: TrainingConfig = build_training_config(training_config_path)
 
-    # load optimizer parameters
-    optimizer_params: OptimizerConfig = load_optimizer_params(optimizer_config)
-
-    # instantiate model
+    # instantiate model, optimizer and data loader
     model = CausalLLM(model_config)
-
-    # instantiate optimizer
-    optimizer = optim.AdamW(
-        model.parameters(), lr=optimizer_params.lr, betas=optimizer_params.betas
+    optimizer: Optimizer = training_config.partial_optimizer(model.parameters())
+    dataset = TokenDataSet("gpt2", model_config.common.context_size, data_path)
+    data_loader = DataLoader(
+        dataset, batch_size=training_config.batch_size, shuffle=True
     )
 
-    # TODO: we need seq_len, batch_size from model config
-    dataset = TokenDataSet("gpt2", 128, "./data/tiny_shakespeare.txt")
-    data_loader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True)
-
     # training loop
-    for _ in range(epochs):
+    for _ in range(training_config.epochs):
         step = 0
         for x, y in data_loader:
             optimizer.zero_grad()
             # shape B, S, Vocab size
-            output = model(x)
+            output: torch.Tensor = model(x)
             loss = F.cross_entropy(output.view(-1, output.size(-1)), y.view(-1))
             loss.backward()
             optimizer.step()
@@ -87,4 +70,7 @@ def train(model: str, optimizer_config: str, epochs: int):
 
 
 if __name__ == "__main__":
-    train("olmo", "adamw", 1)
+    model_path = "./configs/models/olmo.yaml"
+    training_path = "./configs/training/default.yaml"
+    data_path = "./data/tiny_shakespeare.txt"
+    train(model_path, training_path, data_path)

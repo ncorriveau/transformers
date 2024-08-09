@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
-from typing import Any, Callable, Dict, Literal
+from typing import Any, Callable, Dict, List, Literal, Union
 
 import torch.nn as nn
 import torch.optim as optim
@@ -135,7 +135,7 @@ class TrainConfig(BaseModel):
     optimizer_name: str = Field(
         ..., description="The name of the optimizer to use e.g. AdamW"
     )
-    args: Dict[str, Any] = Field(default_factory=dict)
+    args: Dict[str, Union[float, List[float], str]] = Field(default_factory=dict)
     batch_size: int = Field(..., gt=0, description="The batch size to use")
     epochs: int = Field(..., gt=0, description="The number of epochs to train for")
 
@@ -144,6 +144,17 @@ class TrainConfig(BaseModel):
     def validate_optimizer_name(cls, v: str):
         if not hasattr(optim, v):
             raise ValueError(f"'{v}' is not a valid optimizer in torch.optim")
+        return v
+
+    @field_validator("args")
+    @classmethod
+    def parse_numeric_args(cls, v: Dict[str, Any]):
+        for key, value in v.items():
+            if isinstance(value, str):
+                try:
+                    v[key] = float(value)
+                except ValueError:
+                    pass  # Keep as string if it can't be converted to float
         return v
 
     class Config:

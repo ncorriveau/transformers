@@ -67,59 +67,6 @@ class CausalLLM(nn.Module):
         return self.head(x)
 
 
-def load_model_config(model: str) -> ModelConfig:
-    @dataclass
-    class Config:
-        hidden_size: int = 512
-        num_heads_q: int = 8
-        num_heads_k: int = 8
-        num_heads_v: int = 8
-        context_size: int = 512
-        ffn_size: int = 2048
-        num_layers: int = 6
-        vocab_size: int = 50304
-        dropout: float = 0.1
-        activation: nn.Module = nn.GELU
-
-    config = Config()
-    token_embedding = nn.Embedding(config.vocab_size, config.hidden_size)
-    positional_encoding = PositionalEncoding(config.hidden_size, config.context_size)
-    mask = Mask(config.context_size)
-    attention = Attention(
-        config.hidden_size,
-        config.num_heads_q,
-        config.num_heads_k,
-        config.num_heads_v,
-        config.context_size,
-        mask=mask.causal_mask,
-        attn_drop=config.dropout,
-        output_drop=config.dropout,
-    )
-    ffn = FeedForward(
-        config.hidden_size,
-        config.ffn_size,
-        config.activation,
-        config.dropout,
-    )
-    norm = nn.LayerNorm(config.hidden_size)
-    head = nn.Linear(config.hidden_size, config.vocab_size)
-    block = nn.ModuleList(
-        [
-            TransformerBlock(
-                attention,
-                positional_encoding,
-                ffn,
-                norm,
-                pre_norm=False,
-            )
-            for _ in range(config.num_layers)
-        ]
-    )
-    return ModelConfig(
-        token_embedding, positional_encoding, mask, attention, ffn, norm, block, head
-    )
-
-
 if __name__ == "__main__":
     import tiktoken
 
@@ -130,39 +77,39 @@ if __name__ == "__main__":
     torch.manual_seed(42)
 
     # TODO: read in model parameters from config
-    @dataclass
-    class Config:
-        hidden_size: int = 512
-        num_heads_q: int = 8
-        num_heads_k: int = 8
-        num_heads_v: int = 8
-        context_size: int = 512
-        ffn_size: int = 2048
-        num_layers: int = 6
-        vocab_size: int = 50304
-        dropout: float = 0.1
-        activation: nn.Module = nn.GELU
+    # @dataclass
+    # class Config:
+    #     hidden_size: int = 512
+    #     num_heads_q: int = 8
+    #     num_heads_k: int = 8
+    #     num_heads_v: int = 8
+    #     context_size: int = 512
+    #     ffn_size: int = 2048
+    #     num_layers: int = 6
+    #     vocab_size: int = 50304
+    #     dropout: float = 0.1
+    #     activation: nn.Module = nn.GELU
 
-    model_config = load_model_config("gpt2")
-    model = CausalLLM(model_config)
-    model.eval()
+    # model_config = load_model_config("gpt2")
+    # model = CausalLLM(model_config)
+    # model.eval()
 
-    while tokens.size(1) < 10:
-        with torch.no_grad():
-            out = model(tokens)
-            print(out.size())
+    # while tokens.size(1) < 10:
+    #     with torch.no_grad():
+    #         out = model(tokens)
+    #         print(out.size())
 
-            logits = out[:, -1, :]
-            print(logits[:5])
+    #         logits = out[:, -1, :]
+    #         print(logits[:5])
 
-            probs = F.softmax(logits, dim=-1)
-            print(probs.size())
-            topk_probs, tokp_indices = torch.topk(probs, 50, dim=-1)
-            selected = torch.multinomial(topk_probs, num_samples=1)
-            print(selected.size())
+    #         probs = F.softmax(logits, dim=-1)
+    #         print(probs.size())
+    #         topk_probs, tokp_indices = torch.topk(probs, 50, dim=-1)
+    #         selected = torch.multinomial(topk_probs, num_samples=1)
+    #         print(selected.size())
 
-            next_token = torch.gather(tokp_indices, -1, selected)
-            tokens = torch.cat([tokens, next_token], dim=1)
-            print(tokens.size())
+    #         next_token = torch.gather(tokp_indices, -1, selected)
+    #         tokens = torch.cat([tokens, next_token], dim=1)
+    #         print(tokens.size())
 
-    print(enc.decode(tokens.squeeze().tolist()))
+    # print(enc.decode(tokens.squeeze().tolist()))
