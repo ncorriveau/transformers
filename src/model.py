@@ -48,7 +48,7 @@ class CausalLLM(nn.Module):
         self.blocks = self.config.transformer_blocks
         self.head = self.config.head
 
-    def forward(self, x: torch.Tensor, targets: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x is of size batch, seq_len
         B, S = x.size()
 

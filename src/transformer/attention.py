@@ -162,6 +162,8 @@ class Attention(nn.Module):
         attn = attn / math.sqrt(K.size(-1))
 
         # take only the mask tokens up to the sequence length
+        device = input.device
+        self.mask = self.mask.to(device)
         attn = attn.masked_fill(self.mask[:, :, :S, :S], float("-inf"))
         attn = attn.softmax(dim=-1)
 
