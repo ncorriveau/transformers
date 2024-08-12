@@ -47,11 +47,12 @@ class TokenDataSet(torch.utils.data.Dataset):
 @click.option("--training-config-path", type=str, required=True)
 @click.option("--data-path", type=str, required=True)
 def train(model_config_path: str, training_config_path: str, data_path: str):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_config: ModelConfig = build_model_config(model_config_path)
     training_config: TrainingConfig = build_training_config(training_config_path)
 
     # instantiate model, optimizer and data loader
-    model = CausalLLM(model_config)
+    model = CausalLLM(model_config).to(device)
     optimizer: Optimizer = training_config.partial_optimizer(model.parameters())
     dataset = TokenDataSet("gpt2", model_config.common.context_size, data_path)
     data_loader = DataLoader(
@@ -64,6 +65,7 @@ def train(model_config_path: str, training_config_path: str, data_path: str):
         for x, y in data_loader:
             optimizer.zero_grad()
             # shape B, S, Vocab size
+            x, y = x.to(device), y.to(device)
             output: torch.Tensor = model(x)
             loss = F.cross_entropy(output.view(-1, output.size(-1)), y.view(-1))
             loss.backward()
