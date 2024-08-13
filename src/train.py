@@ -99,15 +99,16 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
 @click.option("--training-config-path", type=str, required=True)
 @click.option("--data-path", type=str, required=True)
 def train(model_config_path: str, training_config_path: str, data_path: str):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_config: ModelConfig = build_model_config(model_config_path)
     training_config: TrainingConfig = build_training_config(training_config_path)
     dataset = TokenDataSet("gpt2", model_config.common.context_size, data_path)
-    # process state
-    state = setup()
+
+    # set up training state (dist or not)
+    state = setup(dataset)
+    device = state["device"]
 
     # instantiate model, optimizer and data loader
-    model = CausalLLM(model_config).to(state["device"])
+    model = CausalLLM(model_config).to(device)
     optimizer: Optimizer = training_config.partial_optimizer(model.parameters())
 
     model = distribute_model(model, state, training_config.distributed_strategy)
