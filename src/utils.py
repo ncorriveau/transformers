@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, auto
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Union
 
@@ -41,6 +41,12 @@ class SupportedMask(Enum):
     CAUSAL = "causal"
     SLIDING_WINDOW = "sliding_window"
     GLOBAL = "global"
+
+
+class SupportedDistStrat(Enum):
+    DDP = "ddp"
+    FSDP = "fsdp"
+    DATA_PARALLEL = "data_parallel"
 
 
 TYPE_TO_IMPLEMENTATION = {
@@ -129,6 +135,7 @@ class TrainingConfig:
     args: Dict[str, Any]
     batch_size: int
     epochs: int
+    distributed_strategy: str
 
 
 class TrainConfig(BaseModel):
@@ -138,6 +145,9 @@ class TrainConfig(BaseModel):
     args: Dict[str, Union[float, List[float], str]] = Field(default_factory=dict)
     batch_size: int = Field(..., gt=0, description="The batch size to use")
     epochs: int = Field(..., gt=0, description="The number of epochs to train for")
+    distributed_strategy: SupportedDistStrat = Field(
+        None, description="The distributed strategy to use"
+    )
 
     @field_validator("optimizer_name")
     @classmethod
@@ -245,10 +255,11 @@ def build_training_config(training_config: str) -> TrainingConfig:
         args=validated_config.args,
         batch_size=validated_config.batch_size,
         epochs=validated_config.epochs,
+        distributed_strategy=validated_config.distributed_strategy,
     )
 
 
 if __name__ == "__main__":
-    model_config = build_model_config("./configs/models/olmo.yaml")
+    # model_config = build_model_config("./configs/models/olmo.yaml")
     training_config = build_training_config("./configs/training/default.yaml")
     print(training_config)
