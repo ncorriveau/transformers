@@ -19,7 +19,7 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import (
 from torch.nn.parallel import DataParallel
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Sampler
 from torch.utils.data.distributed import DistributedSampler
 
 from .model import CausalLLM, ModelConfig
@@ -59,18 +59,18 @@ def setup(dataset, backend: str = "nccl") -> tuple[int, int]:
     if world_size - 1 and rank:
         dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
         device = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
-        sampler = DistributedSampler(dataset, rank=rank, num_replicas=world_size)
-        shuffle = False
+        sampler: Sampler = DistributedSampler(
+            dataset, rank=rank, num_replicas=world_size
+        )
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         sampler = None
-        shuffle = True
     return {
         "rank": rank,
         "world_size": world_size,
         "device": device,
-        sampler: sampler,
-        shuffle: shuffle,
+        "sampler": sampler,
+        "shuffle": sampler is None,
     }
 
 
@@ -88,6 +88,9 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
             )
         case "data_parallel":
             model = DataParallel(model, device_ids=[state["rank"]])
+        case _:
+            model = model
+
     return model
 
 
