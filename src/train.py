@@ -11,6 +11,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.multiprocessing as mp
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.fully_sharded_data_parallel import (
     BackwardPrefetch,
@@ -56,12 +57,16 @@ def setup(dataset, backend: str = "nccl") -> tuple[int, int]:
     """
     Set up the training state for distributed training if available
     """
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
     rank = int(os.environ.get("RANK", 0))
     world_size = int(os.environ.get("WORLD_SIZE", 1))
+    print(f"Rank: {rank}, World Size: {world_size}")
     # if world_size > 1 then we start a dist process
     if world_size - 1 and rank:
         dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
         device = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
+        print("Device is: ", device)
         sampler: Sampler = DistributedSampler(
             dataset, rank=rank, num_replicas=world_size
         )
@@ -96,12 +101,7 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
 
     return model
 
-
-@click.command()
-@click.option("--model-config-path", type=str, required=True)
-@click.option("--training-config-path", type=str, required=True)
-@click.option("--data-path", type=str, required=True)
-def train(model_config_path: str, training_config_path: str, data_path: str):
+def train(rank: int, model_config_path: str, training_config_path: str, data_path: str):
     model_config: ModelConfig = build_model_config(model_config_path)
     training_config: TrainingConfig = build_training_config(training_config_path)
     dataset = TokenDataSet("gpt2", model_config.common.context_size, data_path)
@@ -109,6 +109,7 @@ def train(model_config_path: str, training_config_path: str, data_path: str):
     # set up training state (dist or not)
     state = setup(dataset)
     device = state["device"]
+    print("Checking in from device: ", device)
 
     # instantiate model, optimizer and data loader
     model = CausalLLM(model_config).to(device)
@@ -139,8 +140,24 @@ def train(model_config_path: str, training_config_path: str, data_path: str):
             print(f"step: {step}, Loss: {loss.item()}")
             step += 1
 
+    dist.destroy_process_group()
     return model
 
+@click.command()
+@click.option("--model-config-path", type=str, required=True)
+@click.option("--training-config-path", type=str, required=True)
+@click.option("--data-path", type=str, required=True)
+def main(model_config_path: str, training_config_path: str, data_path: str):
+    world_size = torch.cuda.device_count()
+    print(f"Found {world_size} GPUs")
+    mp.spawn(
+        train, 
+        args=(model_config_path, training_config_path, data_path), 
+        nprocs=world_size, 
+        join=True
+    )
+    
 
 if __name__ == "__main__":
-    train()
+    main()
+    

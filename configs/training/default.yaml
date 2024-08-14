@@ -5,4 +5,4 @@ args:
 
 batch_size: 32
 epochs: 1
-distributed_strategy: 'ddp'
+distributed_strategy: 'fsdp'
