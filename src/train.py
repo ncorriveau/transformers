@@ -53,6 +53,9 @@ class TokenDataSet(torch.utils.data.Dataset):
 
 
 def setup(dataset, backend: str = "nccl") -> tuple[int, int]:
+    """
+    Set up the training state for distributed training if available
+    """
     rank = int(os.environ.get("RANK", 0))
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     # if world_size > 1 then we start a dist process
@@ -112,10 +115,10 @@ def train(model_config_path: str, training_config_path: str, data_path: str):
     optimizer: Optimizer = training_config.partial_optimizer(model.parameters())
 
     model = distribute_model(model, state, training_config.distributed_strategy)
-
+    worker_batch_size = training_config.batch_size // state["world_size"]
     data_loader = DataLoader(
         dataset,
-        batch_size=training_config.batch_size,
+        batch_size=worker_batch_size,
         sampler=state["sampler"],
         shuffle=state["shuffle"],
     )
