@@ -24,7 +24,7 @@ from torch.utils.data import DataLoader, Sampler
 from torch.utils.data.distributed import DistributedSampler
 
 from .model import CausalLLM, ModelConfig
-from .utils import TrainingConfig, build_model_config, build_training_config
+from .utils import TrainingConfig, SupportedDistStrat, build_model_config, build_training_config
 
 
 class TokenDataSet(torch.utils.data.Dataset):
@@ -53,25 +53,26 @@ class TokenDataSet(torch.utils.data.Dataset):
         return f"TokenDataSet with {len(self.tokens)} tokens"
 
 
-def setup(dataset, backend: str = "nccl") -> tuple[int, int]:
+def setup(rank, world_size, dataset, backend: str = "nccl") -> tuple[int, int]:
     """
     Set up the training state for distributed training if available
     """
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
-    rank = int(os.environ.get("RANK", 0))
-    world_size = int(os.environ.get("WORLD_SIZE", 1))
-    print(f"Rank: {rank}, World Size: {world_size}")
+    print(f"Setting up process {rank}/{world_size}")
+    
     # if world_size > 1 then we start a dist process
-    if world_size - 1 and rank:
+    if world_size > 1:
+        print("using distributed sampler")
         dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
         device = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
-        print("Device is: ", device)
+        torch.cuda.set_device(device)
         sampler: Sampler = DistributedSampler(
             dataset, rank=rank, num_replicas=world_size
         )
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        torch.cuda.set_device(device)
         sampler = None
     return {
         "rank": rank,
@@ -86,30 +87,30 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
     if state["world_size"] == 1:
         return model
     match strategy:
-        case "ddp":
+        case SupportedDistStrat.DDP:
             model = DDP(model, device_ids=[state["rank"]])
-        case "fsdp":
+        case SupportedDistStrat.FSDP:
             model = FSDP(
                 model,
                 cpu_offload=CPUOffload(offload_params=True),
                 backward_prefetch=BackwardPrefetch.BACKWARD_PRE,
             )
-        case "data_parallel":
+        case SupportedDistStrat.DATA_PARALLEL:
             model = DataParallel(model, device_ids=[state["rank"]])
         case _:
             model = model
 
     return model
 
-def train(rank: int, model_config_path: str, training_config_path: str, data_path: str):
+def train(rank: int, world_size: int, model_config_path: str, training_config_path: str, data_path: str):
     model_config: ModelConfig = build_model_config(model_config_path)
     training_config: TrainingConfig = build_training_config(training_config_path)
     dataset = TokenDataSet("gpt2", model_config.common.context_size, data_path)
 
     # set up training state (dist or not)
-    state = setup(dataset)
+    state = setup(rank, world_size, dataset)
     device = state["device"]
-    print("Checking in from device: ", device)
+    print(f"Rank {rank} using device: {device}")
 
     # instantiate model, optimizer and data loader
     model = CausalLLM(model_config).to(device)
@@ -152,7 +153,7 @@ def main(model_config_path: str, training_config_path: str, data_path: str):
     print(f"Found {world_size} GPUs")
     mp.spawn(
         train, 
-        args=(model_config_path, training_config_path, data_path), 
+        args=(world_size, model_config_path, training_config_path, data_path), 
         nprocs=world_size, 
         join=True
     )
