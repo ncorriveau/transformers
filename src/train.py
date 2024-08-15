@@ -63,7 +63,6 @@ def setup(rank, world_size, dataset, backend: str = "nccl") -> tuple[int, int]:
     
     # if world_size > 1 then we start a dist process
     if world_size > 1:
-        print("using distributed sampler")
         dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
         device = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
         torch.cuda.set_device(device)
