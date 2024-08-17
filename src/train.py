@@ -9,9 +9,9 @@ import click
 import tiktoken
 import torch
 import torch.distributed as dist
+import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.multiprocessing as mp
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.fully_sharded_data_parallel import (
     BackwardPrefetch,
@@ -24,7 +24,12 @@ from torch.utils.data import DataLoader, Sampler
 from torch.utils.data.distributed import DistributedSampler
 
 from .model import CausalLLM, ModelConfig
-from .utils import TrainingConfig, SupportedDistStrat, build_model_config, build_training_config
+from .utils import (
+    SupportedDistStrat,
+    TrainingConfig,
+    build_model_config,
+    build_training_config,
+)
 
 
 class TokenDataSet(torch.utils.data.Dataset):
@@ -57,25 +62,23 @@ def setup(rank, world_size, dataset, backend: str = "nccl") -> tuple[int, int]:
     """
     Set up the training state for distributed training if available
     """
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
     print(f"Setting up process {rank}/{world_size}")
-    
+
     # if world_size > 1 then we start a dist process
     if world_size > 1:
         dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
         device = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
-        torch.cuda.set_device(device)
         sampler: Sampler = DistributedSampler(
             dataset, rank=rank, num_replicas=world_size
         )
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        torch.cuda.set_device(device)
         sampler = None
+
+    torch.cuda.set_device(device)
     return {
-        "rank": rank,
-        "world_size": world_size,
         "device": device,
         "sampler": sampler,
         "shuffle": sampler is None,
@@ -84,10 +87,12 @@ def setup(rank, world_size, dataset, backend: str = "nccl") -> tuple[int, int]:
 
 def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
     if state["world_size"] == 1:
-        return model
+        return model.to(state["device"])
     match strategy:
         case SupportedDistStrat.DDP:
-            model = DDP(model, device_ids=[state["rank"]])
+            model = DDP(
+                model, device_ids=[state["rank"]] if torch.cuda.is_available() else None
+            )
         case SupportedDistStrat.FSDP:
             model = FSDP(
                 model,
@@ -95,13 +100,23 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
                 backward_prefetch=BackwardPrefetch.BACKWARD_PRE,
             )
         case SupportedDistStrat.DATA_PARALLEL:
-            model = DataParallel(model, device_ids=[state["rank"]])
+            if torch.cuda.is_available():
+                model = DataParallel(model, device_ids=[state["rank"]])
+            else:
+                model = model
         case _:
             model = model
 
     return model
 
-def train(rank: int, world_size: int, model_config_path: str, training_config_path: str, data_path: str):
+
+def train(
+    rank: int,
+    world_size: int,
+    model_config_path: str,
+    training_config_path: str,
+    data_path: str,
+):
     model_config: ModelConfig = build_model_config(model_config_path)
     training_config: TrainingConfig = build_training_config(training_config_path)
     dataset = TokenDataSet("gpt2", model_config.common.context_size, data_path)
@@ -116,7 +131,7 @@ def train(rank: int, world_size: int, model_config_path: str, training_config_pa
     optimizer: Optimizer = training_config.partial_optimizer(model.parameters())
 
     model = distribute_model(model, state, training_config.distributed_strategy)
-    worker_batch_size = training_config.batch_size // state["world_size"]
+    worker_batch_size = training_config.batch_size // world_size
     data_loader = DataLoader(
         dataset,
         batch_size=worker_batch_size,
@@ -137,27 +152,29 @@ def train(rank: int, world_size: int, model_config_path: str, training_config_pa
             loss = F.cross_entropy(output.view(-1, output.size(-1)), y.view(-1))
             loss.backward()
             optimizer.step()
-            print(f"step: {step}, Loss: {loss.item()}")
+            print(f"Rank {rank}, Epoch {epoch}, Step {step}, Loss: {loss.item()}")
             step += 1
 
-    dist.destroy_process_group()
+    if world_size > 1:
+        dist.destroy_process_group()
     return model
+
 
 @click.command()
 @click.option("--model-config-path", type=str, required=True)
 @click.option("--training-config-path", type=str, required=True)
 @click.option("--data-path", type=str, required=True)
 def main(model_config_path: str, training_config_path: str, data_path: str):
-    world_size = torch.cuda.device_count()
-    print(f"Found {world_size} GPUs")
+    cuda_avaialble = torch.cuda.is_available()
+    world_size = torch.cuda.device_count() if cuda_avaialble else 1
+    print(f"Found {world_size} {'GPUs' if cuda_avaialble else 'CPU'}")
     mp.spawn(
-        train, 
-        args=(world_size, model_config_path, training_config_path, data_path), 
-        nprocs=world_size, 
-        join=True
+        train,
+        args=(world_size, model_config_path, training_config_path, data_path),
+        nprocs=world_size,
+        join=True,
     )
-    
+
 
 if __name__ == "__main__":
     main()
-    
