@@ -4,6 +4,7 @@ Training loop for a generic LLM model here
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 import click
 import tiktoken
@@ -69,15 +70,15 @@ def setup(rank, world_size, dataset, backend: str = "nccl") -> tuple[int, int]:
     # if world_size > 1 then we start a dist process
     if world_size > 1:
         dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
-        device = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
         sampler: Sampler = DistributedSampler(
             dataset, rank=rank, num_replicas=world_size
         )
+        device = torch.device(f"cuda:{rank}")
+        torch.cuda.set_device(device)
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         sampler = None
 
-    torch.cuda.set_device(device)
     return {
         "device": device,
         "sampler": sampler,
@@ -122,7 +123,8 @@ def train(
     dataset = TokenDataSet("gpt2", model_config.common.context_size, data_path)
 
     # set up training state (dist or not)
-    state = setup(rank, world_size, dataset)
+    state: dict[str, Any] = setup(rank, world_size, dataset)
+    state.update({"world_size": world_size, "rank": rank})
     device = state["device"]
     print(f"Rank {rank} using device: {device}")
 
