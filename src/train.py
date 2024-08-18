@@ -4,6 +4,7 @@ Training loop for a generic LLM model here
 
 import os
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
 import click
@@ -18,6 +19,7 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import (
     BackwardPrefetch,
     CPUOffload,
 )
+from torch.distributed.fsdp.wrap import enable_wrap, size_based_auto_wrap_policy, wrap
 from torch.nn.parallel import DataParallel
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
@@ -65,7 +67,7 @@ def setup(rank, world_size, dataset, backend: str = "nccl") -> tuple[int, int]:
     """
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "12355"
-    print(f"Setting up process {rank}/{world_size}")
+    print(f"Setting up process {rank + 1}/{world_size}")
 
     # if world_size > 1 then we start a dist process
     if world_size > 1:
@@ -95,8 +97,10 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
                 model, device_ids=[state["rank"]] if torch.cuda.is_available() else None
             )
         case SupportedDistStrat.FSDP:
+            auto_wrap_policy = partial(size_based_auto_wrap_policy, min_num_params=1e5)
             model = FSDP(
                 model,
+                auto_wrap_policy=auto_wrap_policy,
                 cpu_offload=CPUOffload(offload_params=True),
                 backward_prefetch=BackwardPrefetch.BACKWARD_PRE,
             )
