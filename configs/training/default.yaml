@@ -3,6 +3,6 @@ args:
   lr: 3e-4
   betas: [0.9, 0.98]
 
-batch_size: 32
+batch_size: 512
 epochs: 1
 distributed_strategy: 'fsdp'
