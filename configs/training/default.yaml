@@ -10,4 +10,4 @@ scheduler_args:
 batch_size: 32
 epochs: 1
 # dtype: 'float16'
-distributed_strategy: 'fsdp'
+distributed_strategy: 'ddp'

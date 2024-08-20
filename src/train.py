@@ -23,6 +23,7 @@ from torch.distributed.fsdp.wrap import enable_wrap, size_based_auto_wrap_policy
 from torch.nn.parallel import DataParallel
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader, Sampler
 from torch.utils.data.distributed import DistributedSampler
 
@@ -135,6 +136,7 @@ def train(
     # instantiate model, optimizer and data loader
     model = CausalLLM(model_config).to(device)
     optimizer: Optimizer = training_config.partial_optimizer(model.parameters())
+    scheduler: LRScheduler = training_config.partial_scheduler(optimizer)
 
     model = distribute_model(model, state, training_config.distributed_strategy)
     worker_batch_size = training_config.batch_size // world_size
@@ -160,6 +162,8 @@ def train(
             optimizer.step()
             print(f"Rank {rank}, Epoch {epoch}, Step {step}, Loss: {loss.item()}")
             step += 1
+
+        scheduler.step()
 
     if world_size > 1:
         dist.destroy_process_group()
