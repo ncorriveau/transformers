@@ -1,8 +1,13 @@
 optimizer_name: AdamW
-args:
+optimizer_args:
   lr: 3e-4
   betas: [0.9, 0.98]
 
+scheduler_name: ExponentialLR
+scheduler_args:
+  gamma: 0.95
+
 batch_size: 32
 epochs: 1
+# dtype: 'float16'
 distributed_strategy: 'fsdp'

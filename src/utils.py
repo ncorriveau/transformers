@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Literal, Union
 
 import torch.nn as nn
 import torch.optim as optim
+import torch.optim.lr_scheduler as lr_scheduler
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator, validator
 from typing_extensions import Self
@@ -132,7 +133,10 @@ class TransformerBlockConfig(BaseModel):
 class TrainingConfig:
     partial_optimizer: Callable
     optimizer_name: str
-    args: Dict[str, Any]
+    optimizer_args: Dict[str, Any]
+    partial_scheduler: Callable
+    scheduler_name: str
+    scheduler_args: Dict[str, Any]
     batch_size: int
     epochs: int
     distributed_strategy: str
@@ -142,7 +146,13 @@ class TrainConfig(BaseModel):
     optimizer_name: str = Field(
         ..., description="The name of the optimizer to use e.g. AdamW"
     )
-    args: Dict[str, Union[float, List[float], str]] = Field(default_factory=dict)
+    optimizer_args: Dict[str, Union[float, List[float], str]] = Field(
+        default_factory=dict
+    )
+    scheduler_name: str = Field(description="The name of the lr scheduler to use")
+    scheduler_args: Dict[str, Union[float, List[float], str]] = Field(
+        default_factory=dict
+    )
     batch_size: int = Field(..., gt=0, description="The batch size to use")
     epochs: int = Field(..., gt=0, description="The number of epochs to train for")
     distributed_strategy: SupportedDistStrat = Field(
@@ -156,7 +166,16 @@ class TrainConfig(BaseModel):
             raise ValueError(f"'{v}' is not a valid optimizer in torch.optim")
         return v
 
-    @field_validator("args")
+    @field_validator("scheduler_name")
+    @classmethod
+    def validate_scheduler_name(cls, v: str):
+        if not hasattr(lr_scheduler, v):
+            raise ValueError(
+                f"'{v}' is not a learning rate scheduler in torch.optim.lr_scheduler"
+            )
+        return v
+
+    @field_validator("optimizer_args")
     @classmethod
     def parse_numeric_args(cls, v: Dict[str, Any]):
         for key, value in v.items():
@@ -248,11 +267,18 @@ def build_training_config(training_config: str) -> TrainingConfig:
     config = load_config(training_config)
     validated_config = TrainConfig(**config)
     optimizer = getattr(optim, validated_config.optimizer_name)
-    partial_optimizer = partial(optimizer, **validated_config.args)
+    partial_optimizer = partial(optimizer, **validated_config.optimizer_args)
+
+    scheduler = getattr(lr_scheduler, validated_config.scheduler_name)
+    scheduler_optimizer = partial(scheduler, **validated_config.scheduler_args)
+
     return TrainingConfig(
         partial_optimizer=partial_optimizer,
         optimizer_name=validated_config.optimizer_name,
-        args=validated_config.args,
+        optimizer_args=validated_config.optimizer_args,
+        partial_scheduler=scheduler_optimizer,
+        scheduler_name=validated_config.scheduler_name,
+        scheduler_args=validated_config.scheduler_args,
         batch_size=validated_config.batch_size,
         epochs=validated_config.epochs,
         distributed_strategy=validated_config.distributed_strategy,
