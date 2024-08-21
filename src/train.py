@@ -14,6 +14,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.cuda.amp import GradScaler
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.fully_sharded_data_parallel import (
     BackwardPrefetch,
@@ -60,6 +61,23 @@ class TokenDataSet(torch.utils.data.Dataset):
 
     def __repr__(self):
         return f"TokenDataSet with {len(self.tokens)} tokens"
+
+
+# def handle_grad(model: nn.Module, optimizer: Optimizer, training_config: TrainingConfig):
+#     """
+#     Helper function to figure out what we need to do for grad scaling and clipping
+#     based on the training config
+#     """
+#     if training_config.grad_scaler and training_config.clip_grad_norm:
+#         training_config.grad_scaler.unscale_(optimizer)
+#         torch.nn.utils.clip_grad_norm_(model.parameters(), training_config.clip_grad_norm)
+
+#     elif training_config.clip_grad_norm:
+#         torch.nn.utils.clip_grad_norm_(model.parameters(), training_config.clip_grad_norm)
+
+#     if training_config.grad_scaler:
+#         training_config.grad_scaler.step(optimizer)
+#         training_config.grad_scaler.update()
 
 
 def setup(rank, world_size, dataset, backend: str = "nccl") -> tuple[int, int]:
@@ -137,6 +155,7 @@ def train(
     model = CausalLLM(model_config).to(device)
     optimizer: Optimizer = training_config.partial_optimizer(model.parameters())
     scheduler: LRScheduler = training_config.partial_scheduler(optimizer)
+    scaler: GradScaler = training_config.grad_scaler
 
     model = distribute_model(model, state, training_config.distributed_strategy)
     worker_batch_size = training_config.batch_size // world_size
@@ -158,8 +177,18 @@ def train(
             x, y = x.to(device), y.to(device)
             output: torch.Tensor = model(x)
             loss = F.cross_entropy(output.view(-1, output.size(-1)), y.view(-1))
-            loss.backward()
-            optimizer.step()
+
+            if training_config.clip_grad_norm:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), training_config.clip_grad_norm
+                )
+
+            # these will just call optimizer.step() and loss.backward() if enable is False in the grad scaler
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+
             print(f"Rank {rank}, Epoch {epoch}, Step {step}, Loss: {loss.item()}")
             step += 1
 

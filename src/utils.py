@@ -8,6 +8,7 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator, validator
+from torch.cuda.amp import GradScaler
 from typing_extensions import Self
 
 from .model import Common, ModelConfig
@@ -137,6 +138,8 @@ class TrainingConfig:
     partial_scheduler: Callable
     scheduler_name: str
     scheduler_args: Dict[str, Any]
+    clip_grad_norm: float
+    grad_scaler: GradScaler
     batch_size: int
     epochs: int
     distributed_strategy: str
@@ -153,6 +156,10 @@ class TrainConfig(BaseModel):
     scheduler_args: Dict[str, Union[float, List[float], str]] = Field(
         default_factory=dict
     )
+    clip_grad_norm: float = Field(
+        0.0, description="The value to clip the gradient norm to, defaults to 0 = off"
+    )
+    use_grad_scaler: bool = Field(False, description="Whether to use a gradient scaler")
     batch_size: int = Field(..., gt=0, description="The batch size to use")
     epochs: int = Field(..., gt=0, description="The number of epochs to train for")
     distributed_strategy: SupportedDistStrat = Field(
@@ -279,6 +286,8 @@ def build_training_config(training_config: str) -> TrainingConfig:
         partial_scheduler=scheduler_optimizer,
         scheduler_name=validated_config.scheduler_name,
         scheduler_args=validated_config.scheduler_args,
+        clip_grad_norm=validated_config.clip_grad_norm,
+        grad_scaler=GradScaler(enabled=validated_config.use_grad_scaler),
         batch_size=validated_config.batch_size,
         epochs=validated_config.epochs,
         distributed_strategy=validated_config.distributed_strategy,

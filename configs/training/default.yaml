@@ -2,6 +2,7 @@ optimizer_name: AdamW
 optimizer_args:
   lr: 3e-4
   betas: [0.9, 0.98]
+  fused: True
 
 scheduler_name: ExponentialLR
 scheduler_args:
@@ -11,3 +12,5 @@ batch_size: 32
 epochs: 1
 # dtype: 'float16'
 distributed_strategy: 'ddp'
+clip_grad_norm: 1.0
+use_grad_scaler: True
