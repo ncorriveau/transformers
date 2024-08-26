@@ -3,6 +3,7 @@ Training loop for a generic LLM model here
 """
 
 import os
+from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
@@ -115,6 +116,7 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
             model = DDP(
                 model, device_ids=[state["rank"]] if torch.cuda.is_available() else None
             )
+        # doesnt actually work yet
         case SupportedDistStrat.FSDP:
             auto_wrap_policy = partial(size_based_auto_wrap_policy, min_num_params=1e5)
             model = FSDP(
@@ -151,6 +153,16 @@ def train(
     device = state["device"]
     print(f"Rank {rank} using device: {device}")
 
+    device_type = "cuda" if torch.cuda.is_available() else "cpu"
+    # from karpathy's nanogpt
+    ctx = (
+        nullcontext()
+        if device_type == "cpu"
+        else torch.cuda.amp.autocast(
+            device_type=device_type, dtype=training_config.dtype
+        )
+    )
+
     # instantiate model, optimizer and data loader
     model = CausalLLM(model_config).to(device)
     optimizer: Optimizer = training_config.partial_optimizer(model.parameters())
@@ -173,10 +185,13 @@ def train(
         step = 0
         for x, y in data_loader:
             optimizer.zero_grad()
-            # shape B, S, Vocab size
+            # shape B, S, V
             x, y = x.to(device), y.to(device)
-            output: torch.Tensor = model(x)
-            loss = F.cross_entropy(output.view(-1, output.size(-1)), y.view(-1))
+            # forward pass in mixed precision
+            with ctx:
+                output: torch.Tensor = model(x)
+                print(f"Output dtype is {output.dtype}")
+                loss = F.cross_entropy(output.view(-1, output.size(-1)), y.view(-1))
 
             if training_config.clip_grad_norm:
                 scaler.unscale_(optimizer)
@@ -184,7 +199,8 @@ def train(
                     model.parameters(), training_config.clip_grad_norm
                 )
 
-            # these will just call optimizer.step() and loss.backward() if enable is False in the grad scaler
+            # these will just call optimizer.step() and loss.backward()
+            # if enable is False in the grad scaler
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()

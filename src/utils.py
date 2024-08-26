@@ -3,6 +3,7 @@ from enum import Enum, auto
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Union
 
+import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
@@ -142,6 +143,7 @@ class TrainingConfig:
     grad_scaler: GradScaler
     batch_size: int
     epochs: int
+    dtype: torch.dtype
     distributed_strategy: str
 
 
@@ -157,14 +159,15 @@ class TrainConfig(BaseModel):
         default_factory=dict
     )
     clip_grad_norm: float = Field(
-        0.0, description="The value to clip the gradient norm to, defaults to 0 = off"
+        1.0, description="The value to clip the gradient norm to, defaults to 0 = off"
     )
-    use_grad_scaler: bool = Field(False, description="Whether to use a gradient scaler")
+    use_grad_scaler: bool = Field(True, description="Whether to use a gradient scaler")
     batch_size: int = Field(..., gt=0, description="The batch size to use")
     epochs: int = Field(..., gt=0, description="The number of epochs to train for")
     distributed_strategy: SupportedDistStrat = Field(
         None, description="The distributed strategy to use"
     )
+    dtype: str = Field("float32", description="The dtype to use for training")
 
     @field_validator("optimizer_name")
     @classmethod
@@ -192,6 +195,13 @@ class TrainConfig(BaseModel):
                 except ValueError:
                     pass  # Keep as string if it can't be converted to float
         return v
+
+    @field_validator("dtype")
+    @classmethod
+    def validate_dtype(cls, v: str):
+        if not hasattr(torch, v):
+            raise ValueError(f"'{v}' is not a valid dtype in torch")
+        return getattr(torch, v)
 
     class Config:
         extra = "allow"  # This allows for additional fields in the args
@@ -272,6 +282,8 @@ def build_model_config(file_path: str) -> ModelConfig:
 
 def build_training_config(training_config: str) -> TrainingConfig:
     config = load_config(training_config)
+    dtype_is_f16 = config.get("dtype") == "float16"
+
     validated_config = TrainConfig(**config)
     optimizer = getattr(optim, validated_config.optimizer_name)
     partial_optimizer = partial(optimizer, **validated_config.optimizer_args)
@@ -287,9 +299,12 @@ def build_training_config(training_config: str) -> TrainingConfig:
         scheduler_name=validated_config.scheduler_name,
         scheduler_args=validated_config.scheduler_args,
         clip_grad_norm=validated_config.clip_grad_norm,
-        grad_scaler=GradScaler(enabled=validated_config.use_grad_scaler),
+        grad_scaler=GradScaler(
+            enabled=validated_config.use_grad_scaler and dtype_is_f16
+        ),
         batch_size=validated_config.batch_size,
         epochs=validated_config.epochs,
+        dtype=validated_config.dtype,
         distributed_strategy=validated_config.distributed_strategy,
     )
 
