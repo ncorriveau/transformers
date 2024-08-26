@@ -13,4 +13,5 @@ epochs: 1
 dtype: 'float16'
 distributed_strategy: 'ddp'
 clip_grad_norm: 1.0
-use_grad_scaler: True  # need to mkae sure we can only do this with float16 and cuda 
+use_grad_scaler: True
+use_mp: True

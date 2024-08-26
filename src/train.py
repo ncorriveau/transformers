@@ -157,7 +157,7 @@ def train(
     # from karpathy's nanogpt
     ctx = (
         nullcontext()
-        if device_type == "cpu"
+        if device_type == "cpu" or not training_config.use_mp
         else torch.autocast(
             device_type=device_type, dtype=training_config.dtype
         )

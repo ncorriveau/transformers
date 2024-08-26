@@ -145,6 +145,7 @@ class TrainingConfig:
     epochs: int
     dtype: torch.dtype
     distributed_strategy: str
+    use_mp: bool
 
 
 class TrainConfig(BaseModel):
@@ -168,6 +169,7 @@ class TrainConfig(BaseModel):
         None, description="The distributed strategy to use"
     )
     dtype: str = Field("float32", description="The dtype to use for training")
+    use_mp: bool = Field(True, description="Whether to use mixed precision training")
 
     @field_validator("optimizer_name")
     @classmethod
@@ -306,6 +308,7 @@ def build_training_config(training_config: str) -> TrainingConfig:
         epochs=validated_config.epochs,
         dtype=validated_config.dtype,
         distributed_strategy=validated_config.distributed_strategy,
+        use_mp=validated_config.use_mp,
     )
 
 
