@@ -158,7 +158,7 @@ def train(
     ctx = (
         nullcontext()
         if device_type == "cpu"
-        else torch.cuda.amp.autocast(
+        else torch.autocast(
             device_type=device_type, dtype=training_config.dtype
         )
     )
@@ -185,23 +185,24 @@ def train(
         step = 0
         for x, y in data_loader:
             optimizer.zero_grad()
+            
             # shape B, S, V
             x, y = x.to(device), y.to(device)
+            
             # forward pass in mixed precision
             with ctx:
                 output: torch.Tensor = model(x)
-                print(f"Output dtype is {output.dtype}")
                 loss = F.cross_entropy(output.view(-1, output.size(-1)), y.view(-1))
 
+            # these will just call optimizer.step() and loss.backward()
+            # if enable is False in the grad scaler
+            scaler.scale(loss).backward()
             if training_config.clip_grad_norm:
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(
                     model.parameters(), training_config.clip_grad_norm
                 )
-
-            # these will just call optimizer.step() and loss.backward()
-            # if enable is False in the grad scaler
-            scaler.scale(loss).backward()
+            
             scaler.step(optimizer)
             scaler.update()
 
