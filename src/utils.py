@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Union
+from packaging import version
 
 import torch
 import torch.nn as nn
@@ -146,6 +147,7 @@ class TrainingConfig:
     dtype: torch.dtype
     distributed_strategy: str
     use_mp: bool
+    compile: bool
 
 
 class TrainConfig(BaseModel):
@@ -170,6 +172,7 @@ class TrainConfig(BaseModel):
     )
     dtype: str = Field("float32", description="The dtype to use for training")
     use_mp: bool = Field(True, description="Whether to use mixed precision training")
+    compile: bool = Field(True, description="Whether to compile the model")
 
     @field_validator("optimizer_name")
     @classmethod
@@ -204,6 +207,14 @@ class TrainConfig(BaseModel):
         if not hasattr(torch, v):
             raise ValueError(f"'{v}' is not a valid dtype in torch")
         return getattr(torch, v)
+
+    @field_validator("compile")
+    @classmethod
+    def validate_compile(cls, v: bool):
+        if version.parse(torch.__version__) < version.parse("2.0.0") and v:
+            print(f"Warning: 'compile' is only available in torch >= 2.0.0")
+            return False
+        return v
 
     class Config:
         extra = "allow"  # This allows for additional fields in the args
@@ -309,6 +320,7 @@ def build_training_config(training_config: str) -> TrainingConfig:
         dtype=validated_config.dtype,
         distributed_strategy=validated_config.distributed_strategy,
         use_mp=validated_config.use_mp,
+        compile=validated_config.compile,
     )
 
 

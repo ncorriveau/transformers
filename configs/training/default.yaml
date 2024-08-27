@@ -15,3 +15,4 @@ distributed_strategy: 'ddp'
 clip_grad_norm: 1.0
 use_grad_scaler: True
 use_mp: True
+compile: True

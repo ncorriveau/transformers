@@ -9,6 +9,7 @@ from functools import partial
 from typing import Any
 
 import click
+import numpy as np
 import tiktoken
 import torch
 import torch.distributed as dist
@@ -63,22 +64,6 @@ class TokenDataSet(torch.utils.data.Dataset):
     def __repr__(self):
         return f"TokenDataSet with {len(self.tokens)} tokens"
 
-
-# def handle_grad(model: nn.Module, optimizer: Optimizer, training_config: TrainingConfig):
-#     """
-#     Helper function to figure out what we need to do for grad scaling and clipping
-#     based on the training config
-#     """
-#     if training_config.grad_scaler and training_config.clip_grad_norm:
-#         training_config.grad_scaler.unscale_(optimizer)
-#         torch.nn.utils.clip_grad_norm_(model.parameters(), training_config.clip_grad_norm)
-
-#     elif training_config.clip_grad_norm:
-#         torch.nn.utils.clip_grad_norm_(model.parameters(), training_config.clip_grad_norm)
-
-#     if training_config.grad_scaler:
-#         training_config.grad_scaler.step(optimizer)
-#         training_config.grad_scaler.update()
 
 
 def setup(rank, world_size, dataset, backend: str = "nccl") -> tuple[int, int]:
@@ -135,6 +120,17 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
 
     return model
 
+def patch_numpy():
+    if not hasattr(np, 'int'):
+        np.int = int
+    if not hasattr(np, 'float'):
+        np.float = float
+    if not hasattr(np, 'bool'):
+        np.bool = bool
+    if not hasattr(np, 'object'):
+        np.object = object
+    if not hasattr(np, 'str'):
+        np.str = str
 
 def train(
     rank: int,
@@ -146,7 +142,7 @@ def train(
     model_config: ModelConfig = build_model_config(model_config_path)
     training_config: TrainingConfig = build_training_config(training_config_path)
     dataset = TokenDataSet("gpt2", model_config.common.context_size, data_path)
-
+    
     # set up training state (dist or not)
     state: dict[str, Any] = setup(rank, world_size, dataset)
     state.update({"world_size": world_size, "rank": rank})
@@ -169,6 +165,13 @@ def train(
     scheduler: LRScheduler = training_config.partial_scheduler(optimizer)
     scaler: GradScaler = training_config.grad_scaler
 
+    if training_config.compile:
+        # this is a hack to deal with old versions of numpy and newer torch w compile 
+        patch_numpy()
+        print("Compiling model... this may take a minute")
+        model = torch.compile(model)
+        print("Model compiled")
+
     model = distribute_model(model, state, training_config.distributed_strategy)
     worker_batch_size = training_config.batch_size // world_size
     data_loader = DataLoader(
@@ -178,7 +181,6 @@ def train(
         shuffle=state["shuffle"],
     )
 
-    # training loop
     for epoch in range(training_config.epochs):
         if state["sampler"]:
             state["sampler"].set_epoch(epoch)
