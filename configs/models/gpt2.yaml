@@ -22,7 +22,16 @@ feed_forward:
   activation_func: 'gelu'
   dropout: 0.1
 
-transformer_block:
-  norm_placement: 'pre'
+norm: 
   norm_type: 'layer'
+
+transformer_block:
+  - norm 
+  - attention 
+  - skip 
+  - norm
+  - feed_forward
+  - skip 
+
+
 

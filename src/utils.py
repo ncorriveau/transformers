@@ -2,13 +2,13 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Union
-from packaging import version
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import yaml
+from packaging import version
 from pydantic import BaseModel, Field, field_validator, model_validator, validator
 from torch.cuda.amp import GradScaler
 from typing_extensions import Self
@@ -122,13 +122,15 @@ class FeedForwardConfig(BaseModel):
         return v
 
 
-class TransformerBlockConfig(BaseModel):
-    norm_placement: SupportedNormPlacements = Field(
-        ...,
-        description="The type of normalization to use",
-    )
+class NormConfig(BaseModel):
     norm_type: SupportedNorms = Field(
         ..., description="The type of normalization to use"
+    )
+
+
+class TransformerBlockConfig(BaseModel):
+    transformer_block: List[str] = Field(
+        ..., description="The component order of the transformer block"
     )
 
 
@@ -237,7 +239,18 @@ def build_model_config(file_path: str) -> ModelConfig:
     attention_config = AttentionConfig(**config["attention"])
     pe_config = PEConfig(**config["positional_encoding"])
     ffn_config = FeedForwardConfig(**config["feed_forward"])
-    transformer_block_config = TransformerBlockConfig(**config["transformer_block"])
+    norm_config = NormConfig(**config["norm"])
+    block_config = TransformerBlockConfig(transformer_block=config["transformer_block"])
+
+    # make sure the components in the block are defined in the config
+    valid_components = any(
+        [
+            component in config.keys()
+            for component in block_config.transformer_block
+            if component != "skip"
+        ]
+    )
+    assert valid_components, "Transformer components must be defined in the config file"
 
     # TODO: we need to make the mask obj dynamic here.
     attn = Attention(
@@ -262,9 +275,8 @@ def build_model_config(file_path: str) -> ModelConfig:
         activation=activation,
         output_drop=ffn_config.dropout,
     )
-    norm = TYPE_TO_IMPLEMENTATION[transformer_block_config.norm_type.value](
-        model_common.hidden_size
-    )
+    norm = TYPE_TO_IMPLEMENTATION[norm_config.norm_type.value](model_common.hidden_size)
+    transformer_block = block_config.transformer_block
     block = nn.ModuleList(
         [
             TransformerBlock(
@@ -272,7 +284,7 @@ def build_model_config(file_path: str) -> ModelConfig:
                 positional_encoding=pe,
                 ffn=ffn,
                 norm=norm,
-                pre_norm=transformer_block_config.norm_placement,
+                transformer_config=transformer_block,
             )
             for _ in range(model_common.num_layers)
         ]
@@ -296,6 +308,7 @@ def build_model_config(file_path: str) -> ModelConfig:
 def build_training_config(training_config: str) -> TrainingConfig:
     config = load_config(training_config)
     dtype_is_f16 = config.get("dtype") == "float16"
+    cuda_available = torch.cuda.is_available()
 
     validated_config = TrainConfig(**config)
     optimizer = getattr(optim, validated_config.optimizer_name)
@@ -313,7 +326,7 @@ def build_training_config(training_config: str) -> TrainingConfig:
         scheduler_args=validated_config.scheduler_args,
         clip_grad_norm=validated_config.clip_grad_norm,
         grad_scaler=GradScaler(
-            enabled=validated_config.use_grad_scaler and dtype_is_f16
+            enabled=validated_config.use_grad_scaler and dtype_is_f16 and cuda_available
         ),
         batch_size=validated_config.batch_size,
         epochs=validated_config.epochs,
@@ -325,6 +338,9 @@ def build_training_config(training_config: str) -> TrainingConfig:
 
 
 if __name__ == "__main__":
-    # model_config = build_model_config("./configs/models/olmo.yaml")
-    training_config = build_training_config("./configs/training/default.yaml")
-    print(training_config)
+    model_config = build_model_config("./configs/models/gpt2.yaml")
+    # training_config = build_training_config("./configs/models/gpt2.yaml")
+    print(model_config)
+    # file_path = "./configs/models/gpt2.yaml"
+    # config = load_config(file_path)
+    # print(config)
