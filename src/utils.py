@@ -308,6 +308,7 @@ def build_model_config(file_path: str) -> ModelConfig:
 def build_training_config(training_config: str) -> TrainingConfig:
     config = load_config(training_config)
     dtype_is_f16 = config.get("dtype") == "float16"
+    cuda_available = torch.cuda.is_available()
 
     validated_config = TrainConfig(**config)
     optimizer = getattr(optim, validated_config.optimizer_name)
@@ -325,7 +326,7 @@ def build_training_config(training_config: str) -> TrainingConfig:
         scheduler_args=validated_config.scheduler_args,
         clip_grad_norm=validated_config.clip_grad_norm,
         grad_scaler=GradScaler(
-            enabled=validated_config.use_grad_scaler and dtype_is_f16
+            enabled=validated_config.use_grad_scaler and dtype_is_f16 and cuda_available
         ),
         batch_size=validated_config.batch_size,
         epochs=validated_config.epochs,
