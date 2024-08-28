@@ -242,6 +242,7 @@ def build_model_config(file_path: str) -> ModelConfig:
     norm_config = NormConfig(**config["norm"])
     block_config = TransformerBlockConfig(transformer_block=config["transformer_block"])
 
+    # make sure the components in the block are defined in the config
     valid_components = any(
         [
             component in config.keys()

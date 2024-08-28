@@ -56,7 +56,7 @@ class TransformerBlock(nn.Module):
             match component:
                 case "attention":
                     self.components.append(self.attention)
-                case "ffn":
+                case "feed_forward":
                     self.components.append(self.ffn)
                 case "norm":
                     self.components.append(self.norm)
