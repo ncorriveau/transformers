@@ -128,6 +128,12 @@ class NormConfig(BaseModel):
     )
 
 
+class TransformerBlockConfig(BaseModel):
+    transformer_block: List[str] = Field(
+        ..., description="The component order of the transformer block"
+    )
+
+
 @dataclass
 class TrainingConfig:
     partial_optimizer: Callable
@@ -234,6 +240,16 @@ def build_model_config(file_path: str) -> ModelConfig:
     pe_config = PEConfig(**config["positional_encoding"])
     ffn_config = FeedForwardConfig(**config["feed_forward"])
     norm_config = NormConfig(**config["norm"])
+    block_config = TransformerBlockConfig(transformer_block=config["transformer_block"])
+
+    valid_components = any(
+        [
+            component in config.keys()
+            for component in block_config.transformer_block
+            if component != "skip"
+        ]
+    )
+    assert valid_components, "Transformer components must be defined in the config file"
 
     # TODO: we need to make the mask obj dynamic here.
     attn = Attention(
@@ -259,7 +275,7 @@ def build_model_config(file_path: str) -> ModelConfig:
         output_drop=ffn_config.dropout,
     )
     norm = TYPE_TO_IMPLEMENTATION[norm_config.norm_type.value](model_common.hidden_size)
-    transformer_block = config["transformer_block"]
+    transformer_block = block_config.transformer_block
     block = nn.ModuleList(
         [
             TransformerBlock(
