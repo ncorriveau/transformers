@@ -27,6 +27,14 @@ class FeedForward(nn.Module):
         return x
 
 
+class Skip(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, residual):
+        return x + residual
+
+
 class TransformerBlock(nn.Module):
     def __init__(
         self,
@@ -34,20 +42,38 @@ class TransformerBlock(nn.Module):
         positional_encoding: PositionalEncoding,
         ffn: FeedForward,
         norm: nn.Module,
-        pre_norm: bool = False,
+        transformer_config: list[str],
     ):
         super().__init__()
         self.attention = attention
         self.positional_encoding = positional_encoding
         self.ffn = ffn
         self.norm = norm
-        self.pre_norm = pre_norm
+        self.transformer_config = transformer_config
+        self.components = nn.ModuleList()
+        self.component_types = []
+        for component in transformer_config:
+            match component:
+                case "attention":
+                    self.components.append(self.attention)
+                case "ffn":
+                    self.components.append(self.ffn)
+                case "norm":
+                    self.components.append(self.norm)
+                case "positional_encoding":
+                    self.components.append(self.positional_encoding)
+                case "skip":
+                    self.components.append(Skip())
+            self.component_types.append(component)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.pre_norm:
-            x = x + self.attention(self.norm(x))
-            x = x + self.ffn(self.norm(x))
-        else:
-            x = self.norm(x + self.attention(x))
-            x = self.norm(x + self.ffn(x))
+        skip_input = None
+        for component, component_type in zip(self.components, self.component_types):
+            if component_type == "skip":
+                x = component(x, skip_input)
+                skip_input = None
+            else:
+                if skip_input is None:
+                    skip_input = x
+                x = component(x)
         return x
