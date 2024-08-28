@@ -166,7 +166,9 @@ class TrainConfig(BaseModel):
     clip_grad_norm: float = Field(
         1.0, description="The value to clip the gradient norm to, defaults to 0 = off"
     )
-    use_grad_scaler: bool = Field(True, description="Whether to use a gradient scaler")
+    use_grad_scaler: bool = Field(
+        True, description="Whether to use a gradient scaler - cuda must be available"
+    )
     batch_size: int = Field(..., gt=0, description="The batch size to use")
     epochs: int = Field(..., gt=0, description="The number of epochs to train for")
     distributed_strategy: SupportedDistStrat = Field(
@@ -174,7 +176,9 @@ class TrainConfig(BaseModel):
     )
     dtype: str = Field("float32", description="The dtype to use for training")
     use_mp: bool = Field(True, description="Whether to use mixed precision training")
-    compile: bool = Field(True, description="Whether to compile the model")
+    compile: bool = Field(
+        True, description="Whether to compile the model - cuda must be available"
+    )
 
     @field_validator("optimizer_name")
     @classmethod
@@ -333,7 +337,7 @@ def build_training_config(training_config: str) -> TrainingConfig:
         dtype=validated_config.dtype,
         distributed_strategy=validated_config.distributed_strategy,
         use_mp=validated_config.use_mp,
-        compile=validated_config.compile,
+        compile=validated_config.compile and cuda_available,
     )
 
 
