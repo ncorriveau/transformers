@@ -68,6 +68,9 @@ class ModelCommon(BaseModel):
     num_layers: int = Field(
         ..., gt=0, description="The number of Transformer layers in the model"
     )
+    weight_tying: bool = Field(
+        False, description="Whether to tie the weights of the token embedding and head"
+    )
 
 
 class AttentionConfig(BaseModel):
@@ -295,6 +298,8 @@ def build_model_config(file_path: str) -> ModelConfig:
     )
     token_embedding = nn.Embedding(model_common.vocab_size, model_common.hidden_size)
     head = nn.Linear(model_common.hidden_size, model_common.vocab_size)
+    if model_common.weight_tying:
+        head.weight = token_embedding.weight
     common = Common(**model_common.model_dump())
 
     return ModelConfig(

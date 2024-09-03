@@ -22,6 +22,7 @@ class Common:
     context_size: int
     num_layers: int
     vocab_size: int
+    weight_tying: bool
 
 
 @dataclass
