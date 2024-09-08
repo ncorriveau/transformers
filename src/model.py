@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .transformer.attention import Attention, Mask
-from .transformer.positional_encoding import PositionalEncoding
+from .transformer.positional_encoding import PositionalEncoding, RoPE, SinusoidalPE
 from .transformer.transformer import FeedForward, TransformerBlock
 
 # token embedding: this is of size (vocab_size, hidden_size)
@@ -14,6 +14,22 @@ from .transformer.transformer import FeedForward, TransformerBlock
 # positional encoding: this is of size (context_size, hidden_size) because it is of the form
 # (idx) -> hidden_dim e.g. it takes the tokens index in the total context size and
 # maps it to some hidden dimension vector that represents its position in the sequence
+
+
+def pe_forward(pe: PositionalEncoding, x: torch.Tensor) -> torch.Tensor:
+    """
+    Adjust how we run forward method based on type of positional encoding used
+    """
+    if type(pe) == SinusoidalPE:
+        return x + pe(x)
+    elif type(pe) == RoPE:
+        # shape x around the number of heads for forward
+        x = x.view(*x.shape[:2], pe.num_q_k_heads, -1)
+        x = pe(x)
+        # reshape back into original shape
+        return x.view(*x.shape[:2], -1)
+    else:
+        return x
 
 
 @dataclass
@@ -57,7 +73,8 @@ class CausalLLM(nn.Module):
         x = self.token_embedding(x)
 
         # add positional encoding
-        x = x + self.positional_encoding(x)
+        # TODO: this needs to be adjusted based on type of PE
+        x = pe_forward(self.positional_encoding, x)
 
         # maybe an optional drop out here
 

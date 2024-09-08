@@ -8,10 +8,11 @@ import torch.nn as nn
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, hidden_size, context_size):
+    def __init__(self, hidden_size, context_size, num_q_k_heads):
         super().__init__()
         self.hidden_size = hidden_size
         self.context_size = context_size
+        self.num_q_k_heads = num_q_k_heads
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x
@@ -38,17 +39,24 @@ class SinusoidalPE(PositionalEncoding):
 
 
 class RoPE(PositionalEncoding):
-    def __init__(self, hidden_size: int, context_size: int, base: int = 10_000):
-        super().__init__(hidden_size, context_size)
+    def __init__(
+        self,
+        hidden_size: int,
+        context_size: int,
+        num_q_k_heads: int,
+        base: int = 10_000,
+    ):
+        super().__init__(hidden_size, context_size, num_q_k_heads)
         self.thetas = torch.float_power(
             base, -2 * torch.arange(0, hidden_size // 2) / hidden_size
         )
+        self.num_heads = num_q_k_heads
         self.build_rope_cache()
 
-    def build_rope_cache(self, max_seq_len: int = 4096) -> None:
+    def build_rope_cache(self) -> None:
         # Create position indexes `[0, 1, ..., max_seq_len - 1]`
         # this is our i's
-        seq_idx = torch.arange(max_seq_len)
+        seq_idx = torch.arange(self.context_size)
 
         # Outer product of theta and position index; output tensor has
         # a shape of [max_seq_len, dim // 2]
@@ -64,7 +72,7 @@ class RoPE(PositionalEncoding):
 
     def forward(self, x: torch.Tensor, input_pos: Optional[int] = None) -> torch.Tensor:
         # input tensor has shape [b, s, n_h, h_d]
-        seq_len = x.size(1)
+        batch_size, seq_len, num_heads, head_dim = x.shape
 
         # extract the values based on whether input_pos is set or not
         rope_cache = self.cache[input_pos] if input_pos else self.cache[:seq_len]
@@ -72,12 +80,12 @@ class RoPE(PositionalEncoding):
         # reshape input; the last dimension is used for computing the output.
         # Cast to float to match the reference implementation
         # tensor has shape [b, s, n_h, h_d // 2, 2]
-        x_shaped = x.float().reshape(*x.shape[:-1], -1, 2)
+        x_shaped = x.float().reshape(batch_size, seq_len, num_heads, head_dim // 2, 2)
 
         # reshape the cache for broadcasting
         # tensor has shape [b, s, 1, h_d // 2, 2] if packed samples,
         # otherwise has shape [1, s, 1, h_d // 2, 2]
-        rope_cache = rope_cache.view(-1, x_shaped.size(1), 1, x_shaped.size(3), 2)
+        rope_cache = rope_cache.view(1, seq_len, 1, head_dim // 2, 2)
 
         # so x is now chopped up with each feature split into hidden_dim //2  '2-D coordinates'
         # we then rotate each 2d coordinate by the respective theta_i (cos or sin) for each feature vector
@@ -96,7 +104,7 @@ class RoPE(PositionalEncoding):
         # x_out tensor has shape [b, s, n_h, h_d // 2, 2]
         # re-collapse on the last dimension to reshape back into h_d
         # final tensor has shape [b, s, n_h, h_d]
-        x_out = x_out.reshape(*x_out.shape[:-2], -1)
+        x_out = x_out.reshape(*x.shape)
 
         return x_out.type_as(x)
 
@@ -104,5 +112,6 @@ class RoPE(PositionalEncoding):
 if __name__ == "__main__":
     hidden_size = 4
     context_size = 1024
-    x = torch.rand(1, context_size, 4, hidden_size)
-    pe1 = RoPE(hidden_size, context_size)
+    x = torch.rand(4, context_size, 4, hidden_size)
+    pe1 = RoPE(hidden_size, context_size, 1)
+    pe1(x)

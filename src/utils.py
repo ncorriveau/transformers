@@ -15,14 +15,14 @@ from typing_extensions import Self
 
 from .model import Common, ModelConfig
 from .transformer.attention import Attention, Mask
-from .transformer.positional_encoding import PositionalEncoding, SinusoidalPE
+from .transformer.positional_encoding import PositionalEncoding, RoPE, SinusoidalPE
 from .transformer.transformer import FeedForward, TransformerBlock
 
 
 class SupportedPE(Enum):
     SINUSOIDAL = "sinusoidal"
+    ROPE = "rope"
     # LEARNABLE = "learnable"
-    # ROPE = "rope"
 
 
 class SupportedActivations(Enum):
@@ -55,6 +55,7 @@ class SupportedDistStrat(Enum):
 
 TYPE_TO_IMPLEMENTATION = {
     "sinusoidal": SinusoidalPE,
+    "rope": RoPE,
     "gelu": nn.GELU,
     "layer": nn.LayerNorm,
     "batch": nn.BatchNorm1d,
@@ -271,9 +272,18 @@ def build_model_config(file_path: str) -> ModelConfig:
         output_drop=attention_config.output_drop,
     )
     pe_model: PositionalEncoding = TYPE_TO_IMPLEMENTATION[pe_config.pe_type.value]
+
+    # hidden dim for RoPe takes into account number of heads
+    # little hackish, probably need to change this if we want to add in more PE types
+    pe_dim = (
+        model_common.hidden_size
+        if pe_config.pe_type != SupportedPE.ROPE
+        else model_common.hidden_size // attention_config.num_heads_q
+    )
     pe = pe_model(
-        hidden_size=model_common.hidden_size,
+        hidden_size=pe_dim,
         context_size=model_common.context_size,
+        num_q_k_heads=attention_config.num_heads_q,
     )
     activation = TYPE_TO_IMPLEMENTATION[ffn_config.activation_func.value]
     ffn = FeedForward(
