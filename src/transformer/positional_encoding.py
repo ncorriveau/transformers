@@ -3,7 +3,8 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn as nn
-from torchtune.modules.position_embeddings import RotaryPositionalEmbeddings
+
+# from torchtune.modules.position_embeddings import RotaryPositionalEmbeddings
 
 
 class PositionalEncoding(nn.Module):
@@ -78,9 +79,11 @@ class RoPE(PositionalEncoding):
         # otherwise has shape [1, s, 1, h_d // 2, 2]
         rope_cache = rope_cache.view(-1, x_shaped.size(1), 1, x_shaped.size(3), 2)
 
-        # so x is now chopped up with each feature split into 2 and we have hidden_dim // 2 of these
-        # we can then calculate their rotation by multiplying the first part with the cos
-        # and the second part with the sin (negative sin in the first one)
+        # so x is now chopped up with each feature split into hidden_dim //2  '2-D coordinates'
+        # we then rotate each 2d coordinate by the respective theta_i (cos or sin) for each feature vector
+        # the theta_i's are already calculated for hd//2 size and for each m corresponding to the position in the seq
+        # so the output will be same shape, just with each 2d coordinate rotated for each feature vector corresponding
+        # to its position in the sequence
         x_out = torch.stack(
             [
                 x_shaped[..., 0] * rope_cache[..., 0]
@@ -92,19 +95,14 @@ class RoPE(PositionalEncoding):
         )
         # x_out tensor has shape [b, s, n_h, h_d // 2, 2]
         # re-collapse on the last dimension to reshape back into h_d
-        x_out = x_out.flatten(3)
+        # final tensor has shape [b, s, n_h, h_d]
+        x_out = x_out.reshape(*x_out.shape[:-2], -1)
 
-        # tensor has shape [b, s, n_h, h_d]
         return x_out.type_as(x)
 
 
 if __name__ == "__main__":
     hidden_size = 4
     context_size = 1024
-    x = torch.rand(1, context_size, hidden_size)
-    print(x.shape)
-    # pe = SinusoidalPE(hidden_size, context_size)
-    # print(pe(x).size())
-    pe = RoPE(hidden_size, context_size)
-    print(pe(x).shape)
-    re = RotaryPositionalEmbeddings(4)
+    x = torch.rand(1, context_size, 4, hidden_size)
+    pe1 = RoPE(hidden_size, context_size)
