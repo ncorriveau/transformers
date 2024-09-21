@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from enum import Enum, auto
+from enum import Enum
 from functools import partial
-from typing import Any, Callable, Dict, List, Literal, Union
+from typing import Any, Callable, Dict, List, Union
 
 import torch
 import torch.nn as nn
@@ -9,7 +9,7 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import yaml
 from packaging import version
-from pydantic import BaseModel, Field, field_validator, model_validator, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from torch.cuda.amp import GradScaler
 from typing_extensions import Self
 
@@ -17,7 +17,6 @@ from .model import Common, ModelConfig
 from .transformer.attention import Attention, Mask
 from .transformer.positional_encoding import (
     PositionalEncoding,
-    RoPE,
     RotaryEmbedding,
     SinusoidalPE,
 )

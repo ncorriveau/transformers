@@ -160,7 +160,7 @@ class Attention(nn.Module):
             K = K.reshape(B, S, self.num_heads_k, self.dim_q_k)
             Q, K = self.rotation(Q, K)
 
-        Q: torch.Tensor = Q.reshape(
+        Q = Q.reshape(
             B, self.num_heads_q // self.num_heads_k, self.num_heads_k, S, self.dim_q_k
         )
         K = K.reshape(B, self.num_heads_k, S, self.dim_q_k)

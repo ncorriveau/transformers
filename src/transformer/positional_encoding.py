@@ -4,8 +4,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-# from torchtune.modules.position_embeddings import RotaryPositionalEmbeddings
-
 
 class PositionalEncoding(nn.Module):
     def __init__(self, hidden_size, context_size, num_q_k_heads):
@@ -38,6 +36,7 @@ class SinusoidalPE(PositionalEncoding):
         return x + self.pe[:, :seq_len, :]
 
 
+# my first pass for pedagogical purposes
 class RoPE(PositionalEncoding):
     def __init__(
         self,
