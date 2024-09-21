@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import MutableMapping, Optional, Tuple
 
 import numpy as np
 import torch
@@ -109,9 +109,126 @@ class RoPE(PositionalEncoding):
         return x_out.type_as(x)
 
 
+class BufferCache(dict, MutableMapping[str, torch.Tensor]):
+    """
+    Cache for attention biases and other things that would normally be stored as buffers.
+    We avoid using buffers because we've run into various issues doing so with FSDP.
+    In general it appears the way FSDP handles buffers is not well-defined.
+    It doesn't shard them but apparently it does synchronize them across processes, which we want to avoid
+    since (A) it isn't necessary, and (B) we sometimes have `-inf` in these biases which might get turned into
+    NaNs when they're synchronized due to casting or some other issue.
+    """
+
+
+class RotaryEmbedding(nn.Module):
+    """
+    Taken from Olmo Implementation: https://github.com/allenai/OLMo/blob/main/olmo/model.py
+    [Rotary positional embeddings (RoPE)](https://arxiv.org/abs/2104.09864).
+    """
+
+    def __init__(
+        self,
+        hidden_size: int,
+        context_size: int,
+        num_q_k_heads: int,
+        cache: BufferCache = BufferCache(),
+        base: int = 10_000,
+    ):
+        super().__init__()
+        self.__cache = cache
+        self.hidden_size = hidden_size
+        self.context_size = context_size
+        self.num_q_k_heads = num_q_k_heads
+        self.base = base
+        # Warm up cache.
+        self.get_rotary_embedding(context_size, torch.device("cpu"))
+
+    def get_rotary_embedding(
+        self, seq_len: int, device: torch.device
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if (
+            (pos_sin := self.__cache.get("rope_pos_sin")) is not None
+            and (pos_cos := self.__cache.get("rope_pos_cos")) is not None
+            and pos_sin.shape[-2] >= seq_len
+            and pos_cos.shape[-2] >= seq_len
+        ):
+            if pos_sin.device != device:
+                pos_sin = pos_sin.to(device)
+                self.__cache["rope_pos_sin"] = pos_sin
+            if pos_cos.device != device:
+                pos_cos = pos_cos.to(device)
+                self.__cache["rope_pos_cos"] = pos_cos
+            return pos_sin[:, :, :seq_len, :], pos_cos[:, :, :seq_len, :]
+
+        with torch.autocast(device.type, enabled=False):
+            dim = self.hidden_size
+            inv_freq = 1.0 / (
+                self.base
+                ** (torch.arange(0, dim, 2, device=device, dtype=torch.float) / dim)
+            )
+            seq = torch.arange(seq_len, device=device, dtype=torch.float)
+            freqs = torch.einsum("i , j -> i j", seq, inv_freq)
+            positions = torch.cat((freqs, freqs), dim=-1)
+            pos_sin, pos_cos = (
+                positions.sin()[None, None, :, :],
+                positions.cos()[None, None, :, :],
+            )
+        self.__cache["rope_pos_sin"] = pos_sin
+        self.__cache["rope_pos_cos"] = pos_cos
+        return pos_sin, pos_cos
+
+    def rotate_half(self, x: torch.Tensor) -> torch.Tensor:
+        """ "
+        This is rotating the input vector by 90 degrees. Once we do this,
+        Then simplying multiplying by sin(theta) and adding to cos(theta) * x
+        will be the same as applying a rotational matrix [cos(theta), -sin(theta); sin(theta), cos(theta)] to x
+        """
+        B, nh, T, hs = x.size()
+        x = x.view(B, nh, T, 2, hs // 2)
+        x1, x2 = x.unbind(dim=-2)
+        return torch.cat((-x2, x1), dim=-1)
+
+    def apply_rotary_pos_emb(
+        self, pos_sin: torch.Tensor, pos_cos: torch.Tensor, t: torch.Tensor
+    ) -> torch.Tensor:
+        return ((t * pos_cos) + (self.rotate_half(t) * pos_sin)).to(t.dtype)
+
+    def forward(
+        self, q: torch.Tensor, k: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        q_, k_ = q.float(), k.float()
+        with torch.autocast(q.device.type, enabled=False):
+            query_len, key_len = (
+                q_.shape[-2],
+                k_.shape[-2],
+            )  # could be different if layer_past not None
+            pos_sin, pos_cos = self.get_rotary_embedding(key_len, q_.device)
+            pos_sin = pos_sin.type_as(q_)
+            pos_cos = pos_cos.type_as(q_)
+            q_ = self.apply_rotary_pos_emb(
+                pos_sin[:, :, key_len - query_len : key_len, :],
+                pos_cos[:, :, key_len - query_len : key_len, :],
+                q_,
+            )
+            k_ = self.apply_rotary_pos_emb(pos_sin, pos_cos, k_)
+        return q_.type_as(q), k_.type_as(k)
+
+
 if __name__ == "__main__":
-    hidden_size = 4
-    context_size = 1024
-    x = torch.rand(4, context_size, 4, hidden_size)
+    hidden_size = 768
+    context_size = 5
+    batch_size = 1
+    num_heads = 1
+    x1 = torch.rand(batch_size, context_size, num_heads, hidden_size)
+    x2 = torch.rand(batch_size, context_size, num_heads, hidden_size)
+
+    cache = BufferCache()
+
     pe1 = RoPE(hidden_size, context_size, 1)
-    pe1(x)
+    test1 = pe1(x1).float()
+    test2 = pe1(x2)
+
+    pe2 = RotaryEmbedding(hidden_size, context_size, num_heads, cache)
+    actual_result = pe2(x1, x2)
+    print(torch.allclose(test1, actual_result[0], atol=1e-2, rtol=1e-2))
+    print(torch.allclose(test2, actual_result[1], atol=1e-2, rtol=1e-2))

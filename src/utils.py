@@ -15,7 +15,12 @@ from typing_extensions import Self
 
 from .model import Common, ModelConfig
 from .transformer.attention import Attention, Mask
-from .transformer.positional_encoding import PositionalEncoding, RoPE, SinusoidalPE
+from .transformer.positional_encoding import (
+    PositionalEncoding,
+    RoPE,
+    RotaryEmbedding,
+    SinusoidalPE,
+)
 from .transformer.transformer import FeedForward, TransformerBlock
 
 
@@ -55,7 +60,7 @@ class SupportedDistStrat(Enum):
 
 TYPE_TO_IMPLEMENTATION = {
     "sinusoidal": SinusoidalPE,
-    "rope": RoPE,
+    "rope": RotaryEmbedding,
     "gelu": nn.GELU,
     "layer": nn.LayerNorm,
     "batch": nn.BatchNorm1d,
@@ -259,18 +264,7 @@ def build_model_config(file_path: str) -> ModelConfig:
         ]
     )
     assert valid_components, "Transformer components must be defined in the config file"
-
     # TODO: we need to make the mask obj dynamic here.
-    attn = Attention(
-        hidden_size=model_common.hidden_size,
-        num_heads_q=attention_config.num_heads_q,
-        num_heads_k=attention_config.num_heads_k,
-        num_heads_v=attention_config.num_heads_v,
-        context_size=model_common.context_size,
-        mask=Mask(model_common.context_size).causal_mask,
-        attn_drop=attention_config.attn_drop,
-        output_drop=attention_config.output_drop,
-    )
     pe_model: PositionalEncoding = TYPE_TO_IMPLEMENTATION[pe_config.pe_type.value]
 
     # hidden dim for RoPe takes into account number of heads
@@ -284,6 +278,18 @@ def build_model_config(file_path: str) -> ModelConfig:
         hidden_size=pe_dim,
         context_size=model_common.context_size,
         num_q_k_heads=attention_config.num_heads_q,
+    )
+    rotation = None if pe_config.pe_type != SupportedPE.ROPE else pe
+    attn = Attention(
+        hidden_size=model_common.hidden_size,
+        num_heads_q=attention_config.num_heads_q,
+        num_heads_k=attention_config.num_heads_k,
+        num_heads_v=attention_config.num_heads_v,
+        context_size=model_common.context_size,
+        mask=Mask(model_common.context_size).causal_mask,
+        rotation=rotation,
+        attn_drop=attention_config.attn_drop,
+        output_drop=attention_config.output_drop,
     )
     activation = TYPE_TO_IMPLEMENTATION[ffn_config.activation_func.value]
     ffn = FeedForward(

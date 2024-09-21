@@ -101,6 +101,7 @@ class Attention(nn.Module):
         context_size: int,
         *,
         mask: torch.BoolTensor,
+        rotation: torch.Tensor = None,
         attn_drop: float = 0.1,
         output_drop: float = 0.1,
     ):
@@ -127,6 +128,7 @@ class Attention(nn.Module):
         self.num_heads_q = num_heads_q
         self.num_heads_k = num_heads_k
         self.num_heads_v = num_heads_v
+        self.rotation = rotation
 
         self.dim_q_k = hidden_size // num_heads_q  # shared between Q and K matrices
         self.dim_v = hidden_size // num_heads_v
@@ -149,12 +151,20 @@ class Attention(nn.Module):
 
     def forward(self, input: torch.Tensor):
         B, S, D = input.size()  # batch size, sequence length, hidden dim
+        Q: torch.Tensor = self.WQ(input)
+        K: torch.Tensor = self.WK(input)
+        V: torch.Tensor = self.WV(input)
+        # add in rotations if PE is RoPE
+        if self.rotation:
+            Q = Q.reshape(B, S, self.num_heads_q, self.dim_q_k)
+            K = K.reshape(B, S, self.num_heads_k, self.dim_q_k)
+            Q, K = self.rotation(Q, K)
 
-        Q: torch.Tensor = self.WQ(input).reshape(
+        Q: torch.Tensor = Q.reshape(
             B, self.num_heads_q // self.num_heads_k, self.num_heads_k, S, self.dim_q_k
         )
-        K: torch.Tensor = self.WK(input).reshape(B, self.num_heads_k, S, self.dim_q_k)
-        V: torch.Tensor = self.WV(input).reshape(B, self.num_heads_v, S, self.dim_v)
+        K = K.reshape(B, self.num_heads_k, S, self.dim_q_k)
+        V = V.reshape(B, self.num_heads_v, S, self.dim_v)
 
         attn: torch.Tensor = (Q @ K.unsqueeze(1).transpose(-2, -1)).reshape(
             B, self.num_heads_q, S, S
