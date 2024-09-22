@@ -147,8 +147,8 @@ class RotaryEmbedding(nn.Module):
         if (
             (pos_sin := self.__cache.get("rope_pos_sin")) is not None
             and (pos_cos := self.__cache.get("rope_pos_cos")) is not None
-            and pos_sin.shape[-1] >= seq_len
-            and pos_cos.shape[-1] >= seq_len
+            and pos_sin.shape[1] >= seq_len
+            and pos_cos.shape[1] >= seq_len
         ):
             if pos_sin.device != device:
                 pos_sin = pos_sin.to(device)
@@ -168,8 +168,8 @@ class RotaryEmbedding(nn.Module):
             freqs = torch.einsum("i , j -> i j", seq, inv_freq)
             positions = torch.cat((freqs, freqs), dim=-1)
             pos_sin, pos_cos = (
-                positions.sin()[None, None, :, :],
-                positions.cos()[None, None, :, :],
+                positions.sin()[None, :, None, :],
+                positions.cos()[None, :, None, :],
             )
         self.__cache["rope_pos_sin"] = pos_sin
         self.__cache["rope_pos_cos"] = pos_cos
@@ -181,8 +181,8 @@ class RotaryEmbedding(nn.Module):
         Then simplying multiplying by sin(theta) and adding to cos(theta) * x
         will be the same as applying a rotational matrix [cos(theta), -sin(theta); sin(theta), cos(theta)] to x
         """
-        B, nh, T, hs = x.size()
-        x = x.view(B, nh, T, 2, hs // 2)
+        B, T, nh, hs = x.size()
+        x = x.view(B, T, nh, 2, hs // 2)
         x1, x2 = x.unbind(dim=-2)
         return torch.cat((-x2, x1), dim=-1)
 
@@ -197,15 +197,15 @@ class RotaryEmbedding(nn.Module):
         q_, k_ = q.float(), k.float()
         with torch.autocast(q.device.type, enabled=False):
             query_len, key_len = (
-                q_.shape[-1],
-                k_.shape[-1],
+                q_.shape[1],
+                k_.shape[1],
             )  # could be different if layer_past not None
             pos_sin, pos_cos = self.get_rotary_embedding(key_len, q_.device)
             pos_sin = pos_sin.type_as(q_)
             pos_cos = pos_cos.type_as(q_)
             q_ = self.apply_rotary_pos_emb(
-                pos_sin[:, :, key_len - query_len : key_len, :],
-                pos_cos[:, :, key_len - query_len : key_len, :],
+                pos_sin[:, key_len - query_len : key_len, :, :],
+                pos_cos[:, key_len - query_len : key_len, :, :],
                 q_,
             )
             k_ = self.apply_rotary_pos_emb(pos_sin, pos_cos, k_)
@@ -213,8 +213,8 @@ class RotaryEmbedding(nn.Module):
 
 
 if __name__ == "__main__":
-    hidden_size = 4
-    context_size = 5
+    hidden_size = 2
+    context_size = 3
     batch_size = 1
     num_heads = 1
     x1 = torch.rand(batch_size, context_size, num_heads, hidden_size)
@@ -223,8 +223,8 @@ if __name__ == "__main__":
     cache = BufferCache()
     pe2 = RotaryEmbedding(hidden_size, context_size, num_heads, cache, base=10)
     actual_result = pe2(x1, x2)
-    print(f"original x1: {x1.squeeze()}, rotated: {actual_result[0].squeeze()}")
-    print(f"original x2: {x2.squeeze()}, rotated: {actual_result[1].squeeze()}")
+    print(f"original x1: {x1.squeeze()},\n rotated: {actual_result[0].squeeze()}")
+    print(f"original x2: {x2.squeeze()},\n rotated: {actual_result[1].squeeze()}")
 
     # Plotting the vectors
     def plot_vectors(original, rotated, title):
@@ -263,10 +263,10 @@ if __name__ == "__main__":
         plt.show()
 
     # Extracting the vectors
-    original_x1 = x1.squeeze().numpy()
-    rotated_x1 = actual_result[0].squeeze().detach().numpy()
-    original_x2 = x2.squeeze().numpy()
-    rotated_x2 = actual_result[1].squeeze().detach().numpy()
+    original_x1 = x1.squeeze().numpy()[1]
+    rotated_x1 = actual_result[0].squeeze().detach().numpy()[1]
+    original_x2 = x2.squeeze().numpy()[1]
+    rotated_x2 = actual_result[1].squeeze().detach().numpy()[1]
 
     # Plot the vectors
     plot_vectors(original_x1, rotated_x1, "Vector x1 Before and After Rotation")
