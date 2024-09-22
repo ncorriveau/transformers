@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .transformer.attention import Attention, Mask
-from .transformer.positional_encoding import PositionalEncoding, RoPE, SinusoidalPE
-from .transformer.transformer import FeedForward, TransformerBlock
+from .transformer.attention import Attention
+from .transformer.positional_encoding import PositionalEncoding, SinusoidalPE
+from .transformer.transformer import FeedForward
 
 # token embedding: this is of size (vocab_size, hidden_size)
 # and is basically a look up table for the tokens and projecting them into the hidden dim
@@ -14,12 +14,6 @@ from .transformer.transformer import FeedForward, TransformerBlock
 # positional encoding: this is of size (context_size, hidden_size) because it is of the form
 # (idx) -> hidden_dim e.g. it takes the tokens index in the total context size and
 # maps it to some hidden dimension vector that represents its position in the sequence
-
-
-def pe_forward(pe: PositionalEncoding, x: torch.Tensor) -> torch.Tensor:
-    """
-    Adjust how we run forward method based on type of positional encoding used
-    """
 
 
 @dataclass

@@ -243,14 +243,11 @@ def load_config(file_path: str) -> dict[str, Any]:
 def build_pe_args(
     pe_type: SupportedPE, model_common: ModelCommon, attention_config: AttentionConfig
 ) -> dict:
+    """helper function to build the args for the positional encoding. Probably
+    over kill for now but gives flexibility for new types"""
     extra_args = dict()
     if pe_type == SupportedPE.ROPE:
-        extra_args.update(
-            {
-                "dim": model_common.hidden_size // attention_config.num_heads_q,
-                "num_q_k_heads": attention_config.num_heads_q,
-            }
-        )
+        extra_args.update({"num_q_k_heads": attention_config.num_heads_q})
     return {
         "hidden_size": model_common.hidden_size,
         "context_size": model_common.context_size,

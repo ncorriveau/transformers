@@ -16,7 +16,7 @@ attention:
 
 # figure out how to add additional args to all of these 
 positional_encoding:
-  pe_type: 'sinusoidal'
+  pe_type: 'rope'
 
 feed_forward:
   ffn_size: 2048

@@ -159,7 +159,7 @@ class RotaryEmbedding(nn.Module):
             return pos_sin[:, :seq_len, :, :], pos_cos[:, :seq_len, :, :]
 
         with torch.autocast(device.type, enabled=False):
-            dim = self.hidden_size
+            dim = self.hidden_size // self.num_q_k_heads
             inv_freq = 1.0 / (
                 self.base
                 ** (torch.arange(0, dim, 2, device=device, dtype=torch.float) / dim)
