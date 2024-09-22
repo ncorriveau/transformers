@@ -3,7 +3,7 @@ common:
   context_size: 128
   vocab_size: 50304
   num_layers: 6
-  weight_tying: True
+  weight_tying: False
 
 attention:
   num_heads_q: 8
@@ -11,12 +11,12 @@ attention:
   num_heads_v: 8
   mask: 'causal'
   is_causal: True
-  attn_drop: 0.0
-  output_drop: 0.0
+  attn_drop: 0.1
+  output_drop: 0.1
 
 # figure out how to add additional args to all of these 
 positional_encoding:
-  pe_type: 'rope'
+  pe_type: 'sinusoidal'
 
 feed_forward:
   ffn_size: 2048

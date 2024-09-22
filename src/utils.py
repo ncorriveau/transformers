@@ -240,6 +240,24 @@ def load_config(file_path: str) -> dict[str, Any]:
     return yaml_data
 
 
+def build_pe_args(
+    pe_type: SupportedPE, model_common: ModelCommon, attention_config: AttentionConfig
+) -> dict:
+    extra_args = dict()
+    if pe_type == SupportedPE.ROPE:
+        extra_args.update(
+            {
+                "dim": model_common.hidden_size // attention_config.num_heads_q,
+                "num_q_k_heads": attention_config.num_heads_q,
+            }
+        )
+    return {
+        "hidden_size": model_common.hidden_size,
+        "context_size": model_common.context_size,
+        **extra_args,
+    }
+
+
 # yes this is ugly, maybe a better way but we'll see if it works for now.
 def build_model_config(file_path: str) -> ModelConfig:
     """
@@ -263,22 +281,13 @@ def build_model_config(file_path: str) -> ModelConfig:
         ]
     )
     assert valid_components, "Transformer components must be defined in the config file"
+
     # TODO: we need to make the mask obj dynamic here.
     pe_model: PositionalEncoding = TYPE_TO_IMPLEMENTATION[pe_config.pe_type.value]
-
-    # hidden dim for RoPe takes into account number of heads
-    # little hackish, probably need to change this if we want to add in more PE types
-    pe_dim = (
-        model_common.hidden_size
-        if pe_config.pe_type != SupportedPE.ROPE
-        else model_common.hidden_size // attention_config.num_heads_q
-    )
-    pe = pe_model(
-        hidden_size=pe_dim,
-        context_size=model_common.context_size,
-        num_q_k_heads=attention_config.num_heads_q,
-    )
+    pe_args = build_pe_args(pe_config.pe_type, model_common, attention_config)
+    pe = pe_model(**pe_args)
     rotation = None if pe_config.pe_type != SupportedPE.ROPE else pe
+
     attn = Attention(
         hidden_size=model_common.hidden_size,
         num_heads_q=attention_config.num_heads_q,

@@ -49,8 +49,8 @@ class TokenDataSet(torch.utils.data.Dataset):
             print(f"Error loading data: {e}")
             raise e
 
-        enc = tiktoken.get_encoding(tokenizer)
-        self.tokens = enc.encode(data)
+        self.enc = tiktoken.get_encoding(tokenizer)
+        self.tokens = self.enc.encode(data)
         self.seq_len = seq_len
 
     def __len__(self):
@@ -64,6 +64,9 @@ class TokenDataSet(torch.utils.data.Dataset):
     def __repr__(self):
         return f"TokenDataSet with {len(self.tokens)} tokens"
 
+    def encode_sentence(self, sample_sentence: str) -> torch.Tensor:
+        tokens = self.enc.encode(sample_sentence)
+        return torch.tensor(tokens).unsqueeze(0)
 
 
 def setup(rank, world_size, dataset, backend: str = "nccl") -> tuple[int, int]:
@@ -120,17 +123,19 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
 
     return model
 
+
 def patch_numpy():
-    if not hasattr(np, 'int'):
+    if not hasattr(np, "int"):
         np.int = int
-    if not hasattr(np, 'float'):
+    if not hasattr(np, "float"):
         np.float = float
-    if not hasattr(np, 'bool'):
+    if not hasattr(np, "bool"):
         np.bool = bool
-    if not hasattr(np, 'object'):
+    if not hasattr(np, "object"):
         np.object = object
-    if not hasattr(np, 'str'):
+    if not hasattr(np, "str"):
         np.str = str
+
 
 def train(
     rank: int,
@@ -142,7 +147,8 @@ def train(
     model_config: ModelConfig = build_model_config(model_config_path)
     training_config: TrainingConfig = build_training_config(training_config_path)
     dataset = TokenDataSet("gpt2", model_config.common.context_size, data_path)
-    
+    test = dataset.encode_sentence("It is a good time to")
+
     # set up training state (dist or not)
     state: dict[str, Any] = setup(rank, world_size, dataset)
     state.update({"world_size": world_size, "rank": rank})
@@ -154,9 +160,7 @@ def train(
     ctx = (
         nullcontext()
         if device_type == "cpu" or not training_config.use_mp
-        else torch.autocast(
-            device_type=device_type, dtype=training_config.dtype
-        )
+        else torch.autocast(device_type=device_type, dtype=training_config.dtype)
     )
 
     # instantiate model, optimizer and data loader
@@ -166,13 +170,15 @@ def train(
     scaler: GradScaler = training_config.grad_scaler
 
     if training_config.compile:
-        # this is a hack to deal with old versions of numpy and newer torch w compile 
+        # this is a hack to deal with old versions of numpy and newer torch w compile
         patch_numpy()
         print("Compiling model... this may take a minute")
         model = torch.compile(model)
         print("Model compiled")
 
-    model = distribute_model(model, state, training_config.distributed_strategy)
+    model: CausalLLM = distribute_model(
+        model, state, training_config.distributed_strategy
+    )
     worker_batch_size = training_config.batch_size // world_size
     data_loader = DataLoader(
         dataset,
@@ -187,10 +193,10 @@ def train(
         step = 0
         for x, y in data_loader:
             optimizer.zero_grad()
-            
+
             # shape B, S, V
             x, y = x.to(device), y.to(device)
-            
+
             # forward pass in mixed precision
             with ctx:
                 output: torch.Tensor = model(x)
@@ -204,11 +210,18 @@ def train(
                 torch.nn.utils.clip_grad_norm_(
                     model.parameters(), training_config.clip_grad_norm
                 )
-            
+
             scaler.step(optimizer)
             scaler.update()
 
             print(f"Rank {rank}, Epoch {epoch}, Step {step}, Loss: {loss.item()}")
+            # run sample output on our test sentence
+            if step % 10 == 0 and rank == 0:
+                with torch.no_grad():
+                    model.eval()
+                    generated = model.generate(test, 10, top_k=50)
+                    print(dataset.enc.decode(generated.squeeze().cpu().numpy()))
+                    model.train()
             step += 1
 
         scheduler.step()
