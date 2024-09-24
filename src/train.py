@@ -39,6 +39,13 @@ from .utils import (
 )
 
 
+def setup_checkpoint_dir() -> str:
+    root_dir = os.path.dirname(os.path.abspath(__file__))
+    checkpoints_dir = os.path.join(root_dir, "checkpoints")
+    os.makedirs(checkpoints_dir, exist_ok=True)
+    return checkpoints_dir
+
+
 class TokenDataSet(torch.utils.data.Dataset):
     def __init__(self, tokenizer: str, seq_len: int, data_path: str):
         try:
@@ -148,6 +155,8 @@ def train(
     training_config: TrainingConfig = build_training_config(training_config_path)
     dataset = TokenDataSet("gpt2", model_config.common.context_size, data_path)
     test = dataset.encode_sentence("It is a good time to")
+    best_loss = np.inf
+    check_dir = setup_checkpoint_dir()
 
     # set up training state (dist or not)
     state: dict[str, Any] = setup(rank, world_size, dataset)
@@ -217,11 +226,29 @@ def train(
             print(f"Rank {rank}, Epoch {epoch}, Step {step}, Loss: {loss.item()}")
             # run sample output on our test sentence
             if step % 10 == 0 and rank == 0:
+                # TODO: implement get_val_loss
+                val_loss = 0  # get_val_loss()
+                print(f"Validation loss: {val_loss}")
+                if val_loss < best_loss and step > 0:
+                    best_loss = val_loss
+                    checkpoint = {
+                        "model": model.state_dict(),
+                        "optimizer": optimizer.state_dict(),
+                        "model_config": model_config_path,
+                        "training_config": training_config_path,
+                        "iter_num": step,
+                        "epoch": epoch,
+                        "best_val_loss": best_loss,
+                    }
+                    torch.save(checkpoint, os.path.join(check_dir, "best_model.pth"))
+                    print(f"Saved best model at epoch {epoch} step {step}")
+
                 with torch.no_grad():
                     model.eval()
                     generated = model.generate(test, 10, top_k=50)
                     print(dataset.enc.decode(generated.squeeze().cpu().numpy()))
                     model.train()
+
             step += 1
 
         scheduler.step()
