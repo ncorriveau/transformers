@@ -75,6 +75,12 @@ class TokenDataSet(torch.utils.data.Dataset):
         tokens = self.enc.encode(sample_sentence)
         return torch.tensor(tokens).unsqueeze(0)
 
+    def get_trian_test_split(self, ratio: float = 0.8):
+        split_idx = int(len(self.tokens) * ratio)
+        train = self.tokens[:split_idx]
+        test = self.tokens[split_idx:]
+        return train, test
+
 
 def setup(rank, world_size, dataset, backend: str = "nccl") -> tuple[int, int]:
     """
@@ -131,6 +137,20 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
     return model
 
 
+@torch.no_grad()
+def get_val_loss(model: CausalLLM, val_data: torch.Tensor, context):
+    model.eval()
+    val_loss = 0
+    for x, y in val_data:
+        x, y = x.to(model.device), y.to(model.device)
+        with context:
+            output = model(x)
+        loss = F.cross_entropy(output.view(-1, output.size(-1)), y.view(-1))
+        val_loss += loss.item()
+    model.train()
+    return val_loss / len(val_data)
+
+
 def patch_numpy():
     if not hasattr(np, "int"):
         np.int = int
@@ -150,11 +170,14 @@ def train(
     model_config_path: str,
     training_config_path: str,
     data_path: str,
+    checkpoint_path: str = None,
 ):
     model_config: ModelConfig = build_model_config(model_config_path)
     training_config: TrainingConfig = build_training_config(training_config_path)
     dataset = TokenDataSet("gpt2", model_config.common.context_size, data_path)
-    test = dataset.encode_sentence("It is a good time to")
+    # train, test = dataset.get_trian_test_split()
+
+    test_phrase = dataset.encode_sentence("It is a good time to")
     best_loss = np.inf
     check_dir = setup_checkpoint_dir()
 
@@ -177,6 +200,16 @@ def train(
     optimizer: Optimizer = training_config.partial_optimizer(model.parameters())
     scheduler: LRScheduler = training_config.partial_scheduler(optimizer)
     scaler: GradScaler = training_config.grad_scaler
+
+    if checkpoint_path:
+        if not os.path.exists(checkpoint_path):
+            raise FileNotFoundError(f"Checkpoint file {checkpoint_path} not found")
+
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint["model"])
+        optimizer.load_state_dict(checkpoint["optimizer"])
+        best_loss = checkpoint["best_val_loss"]
+        print(f"Loaded checkpoint from {checkpoint_path}")
 
     if training_config.compile:
         # this is a hack to deal with old versions of numpy and newer torch w compile
@@ -245,7 +278,7 @@ def train(
 
                 with torch.no_grad():
                     model.eval()
-                    generated = model.generate(test, 10, top_k=50)
+                    generated = model.generate(test_phrase, 10, top_k=50)
                     print(dataset.enc.decode(generated.squeeze().cpu().numpy()))
                     model.train()
 
@@ -262,13 +295,31 @@ def train(
 @click.option("--model-config-path", type=str, required=True)
 @click.option("--training-config-path", type=str, required=True)
 @click.option("--data-path", type=str, required=True)
-def main(model_config_path: str, training_config_path: str, data_path: str):
+@click.option(
+    "--checkpoint-path",
+    default=None,
+    type=str,
+    required=False,
+    description="Path to previously saved checkpoint",
+)
+def main(
+    model_config_path: str,
+    training_config_path: str,
+    data_path: str,
+    checkpoint_path: str = None,
+):
     cuda_avaialble = torch.cuda.is_available()
     world_size = torch.cuda.device_count() if cuda_avaialble else 1
     print(f"Found {world_size} {'GPUs' if cuda_avaialble else 'CPU'}")
     mp.spawn(
         train,
-        args=(world_size, model_config_path, training_config_path, data_path),
+        args=(
+            world_size,
+            model_config_path,
+            training_config_path,
+            data_path,
+            checkpoint_path,
+        ),
         nprocs=world_size,
         join=True,
     )
