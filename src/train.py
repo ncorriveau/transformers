@@ -75,10 +75,15 @@ class TokenDataSet(torch.utils.data.Dataset):
         tokens = self.enc.encode(sample_sentence)
         return torch.tensor(tokens).unsqueeze(0)
 
-    def get_trian_test_split(self, ratio: float = 0.8):
-        split_idx = int(len(self.tokens) * ratio)
-        train = self.tokens[:split_idx]
-        test = self.tokens[split_idx:]
+    # def get_trian_test_split(self, ratio: float = 0.8):
+    #     split_idx = int(len(self.tokens) * ratio)
+    #     train = self.tokens[:split_idx]
+    #     test = self.tokens[split_idx:]
+    #     return train, test
+
+    @staticmethod
+    def get_train_test_split(dataset: torch.utils.data.Dataset, ratio: float = 0.8):
+        train, test = torch.utils.data.random_split(dataset, [ratio, 1 - ratio])
         return train, test
 
 
@@ -138,17 +143,23 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
 
 
 @torch.no_grad()
-def get_val_loss(model: CausalLLM, val_data: torch.Tensor, context):
+def get_val_loss(
+    model: CausalLLM, val_data: torch.Tensor, context, device: torch.device
+):
     model.eval()
-    val_loss = 0
+    val_loss = val_size = 0
     for x, y in val_data:
-        x, y = x.to(model.device), y.to(model.device)
+        x, y = x.to(device), y.to(device)
         with context:
             output = model(x)
         loss = F.cross_entropy(output.view(-1, output.size(-1)), y.view(-1))
-        val_loss += loss.item()
+
+        # loss is already avg across batch
+        val_loss += loss.item() * x.size(0)
+        val_size += x.size(0)
+
     model.train()
-    return val_loss / len(val_data)
+    return val_loss / val_size if val_size > 0 else 0
 
 
 def patch_numpy():
@@ -222,8 +233,17 @@ def train(
         model, state, training_config.distributed_strategy
     )
     worker_batch_size = training_config.batch_size // world_size
-    data_loader = DataLoader(
-        dataset,
+
+    # TODO: investigate memory pinning
+    train, test = dataset.get_train_test_split(dataset)
+    train_loader = DataLoader(
+        train,
+        batch_size=worker_batch_size,
+        sampler=state["sampler"],
+        shuffle=state["shuffle"],
+    )
+    test_loader = DataLoader(
+        test,
         batch_size=worker_batch_size,
         sampler=state["sampler"],
         shuffle=state["shuffle"],
@@ -233,7 +253,7 @@ def train(
         if state["sampler"]:
             state["sampler"].set_epoch(epoch)
         step = 0
-        for x, y in data_loader:
+        for x, y in train_loader:
             optimizer.zero_grad()
 
             # shape B, S, V
@@ -260,7 +280,7 @@ def train(
             # run sample output on our test sentence
             if step % 10 == 0 and rank == 0:
                 # TODO: implement get_val_loss
-                val_loss = 0  # get_val_loss()
+                val_loss = get_val_loss(model, test_loader, ctx, device)
                 print(f"Validation loss: {val_loss}")
                 if val_loss < best_loss and step > 0:
                     best_loss = val_loss
@@ -300,7 +320,7 @@ def train(
     default=None,
     type=str,
     required=False,
-    description="Path to previously saved checkpoint",
+    help="Path to previously saved checkpoint",
 )
 def main(
     model_config_path: str,
