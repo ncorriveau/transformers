@@ -41,7 +41,8 @@ from .utils import (
 
 
 def setup_checkpoint_dir() -> str:
-    root_dir = os.path.dirname(os.path.abspath(__file__))
+    # get project root dir
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     checkpoints_dir = os.path.join(root_dir, "checkpoints")
     os.makedirs(checkpoints_dir, exist_ok=True)
     return checkpoints_dir
