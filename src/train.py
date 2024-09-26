@@ -6,6 +6,7 @@ import os
 from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import partial
+from itertools import islice
 from typing import Any
 
 import click
@@ -148,7 +149,9 @@ def get_val_loss(
 ):
     model.eval()
     val_loss = val_size = 0
-    for x, y in val_data:
+    val_data_iter = iter(val_data)
+    eval_slice = islice(val_data_iter, 10)
+    for x, y in eval_slice:
         x, y = x.to(device), y.to(device)
         with context:
             output = model(x)
@@ -278,7 +281,7 @@ def train(
 
             print(f"Rank {rank}, Epoch {epoch}, Step {step}, Loss: {loss.item()}")
             # run sample output on our test sentence
-            if step % 10 == 0 and rank == 0:
+            if step % 10 == 0 and step > 0 and rank == 0:
                 # TODO: implement get_val_loss
                 val_loss = get_val_loss(model, test_loader, ctx, device)
                 print(f"Validation loss: {val_loss}")
