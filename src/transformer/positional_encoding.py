@@ -35,7 +35,8 @@ class SinusoidalPE(PositionalEncoding):
         return x + self.pe[:, :seq_len, :]
 
 
-# my first pass for pedagogical purposes
+# my first pass for pedagogical purposes - basically pytorch implementation
+# with my notes
 class RoPE(PositionalEncoding):
     def __init__(
         self,
@@ -129,6 +130,7 @@ class RotaryEmbedding(nn.Module):
         hidden_size: int,
         context_size: int,
         num_q_k_heads: int,
+        device: torch.device,
         cache: BufferCache = BufferCache(),
         base: int = 10_000,
     ):
@@ -139,7 +141,7 @@ class RotaryEmbedding(nn.Module):
         self.num_q_k_heads = num_q_k_heads
         self.base = base
         # Warm up cache.
-        self.get_rotary_embedding(context_size, torch.device("cpu"))
+        self.get_rotary_embedding(context_size, device)
 
     def get_rotary_embedding(
         self, seq_len: int, device: torch.device

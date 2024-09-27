@@ -89,7 +89,7 @@ class TokenDataSet(torch.utils.data.Dataset):
         return train, test
 
 
-def setup(rank, world_size, dataset, backend: str = "nccl") -> tuple[int, int]:
+def setup(rank, world_size, backend: str = "nccl") -> tuple[int, int]:
     """
     Set up the training state for distributed training if available
     """
@@ -100,19 +100,16 @@ def setup(rank, world_size, dataset, backend: str = "nccl") -> tuple[int, int]:
     # if world_size > 1 then we start a dist process
     if world_size > 1:
         dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
-        sampler: Sampler = DistributedSampler(
-            dataset, rank=rank, num_replicas=world_size
-        )
         device = torch.device(f"cuda:{rank}")
+        device_type = "cuda"
         torch.cuda.set_device(device)
     else:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        sampler = None
+        device_type = "cuda" if torch.cuda.is_available() else "cpu"
+        device = torch.device(device_type)
 
     return {
         "device": device,
-        "sampler": sampler,
-        "shuffle": sampler is None,
+        "device_type": device_type,
     }
 
 
@@ -187,27 +184,37 @@ def train(
     data_path: str,
     checkpoint_path: str = None,
 ):
-    model_config: ModelConfig = build_model_config(model_config_path)
+    # initial set up of training state
+    state: dict[str, Any] = setup(rank, world_size)
+    model_config: ModelConfig = build_model_config(model_config_path, state["device"])
     training_config: TrainingConfig = build_training_config(training_config_path)
     dataset = TokenDataSet("gpt2", model_config.common.context_size, data_path)
-    # train, test = dataset.get_trian_test_split()
-
-    test_phrase = dataset.encode_sentence("It is a good time to")
-    best_loss = np.inf
     check_dir = setup_checkpoint_dir()
+    sampler = None
 
-    # set up training state (dist or not)
-    state: dict[str, Any] = setup(rank, world_size, dataset)
-    state.update({"world_size": world_size, "rank": rank})
+    if world_size > 1:
+        sampler: Sampler = DistributedSampler(
+            dataset, rank=rank, num_replicas=world_size
+        )
+
+    state.update(
+        {
+            "world_size": world_size,
+            "rank": rank,
+            "sampler": sampler,
+            "shuffle": sampler is None,
+        }
+    )
     device = state["device"]
     print(f"Rank {rank} using device: {device}")
 
-    device_type = "cuda" if torch.cuda.is_available() else "cpu"
     # from karpathy's nanogpt
     ctx = (
         nullcontext()
-        if device_type == "cpu" or not training_config.use_mp
-        else torch.autocast(device_type=device_type, dtype=training_config.dtype)
+        if state["device_type"] == "cpu" or not training_config.use_mp
+        else torch.autocast(
+            device_type=state["device_type"], dtype=training_config.dtype
+        )
     )
 
     # instantiate model, optimizer and data loader
@@ -253,6 +260,8 @@ def train(
         shuffle=state["shuffle"],
     )
 
+    test_phrase = dataset.encode_sentence("It is a good time to")
+    best_loss = np.inf
     for epoch in range(training_config.epochs):
         if state["sampler"]:
             state["sampler"].set_epoch(epoch)

@@ -241,13 +241,18 @@ def load_config(file_path: str) -> dict[str, Any]:
 
 
 def build_pe_args(
-    pe_type: SupportedPE, model_common: ModelCommon, attention_config: AttentionConfig
+    pe_type: SupportedPE,
+    model_common: ModelCommon,
+    attention_config: AttentionConfig,
+    device: torch.device,
 ) -> dict:
     """helper function to build the args for the positional encoding. Probably
     over kill for now but gives flexibility for new types"""
     extra_args = dict()
     if pe_type == SupportedPE.ROPE:
-        extra_args.update({"num_q_k_heads": attention_config.num_heads_q})
+        extra_args.update(
+            {"num_q_k_heads": attention_config.num_heads_q, "device": device}
+        )
     return {
         "hidden_size": model_common.hidden_size,
         "context_size": model_common.context_size,
@@ -256,7 +261,7 @@ def build_pe_args(
 
 
 # yes this is ugly, maybe a better way but we'll see if it works for now.
-def build_model_config(file_path: str) -> ModelConfig:
+def build_model_config(file_path: str, device: torch.device) -> ModelConfig:
     """
     Loads in the model configs and validates values.
 
@@ -281,7 +286,7 @@ def build_model_config(file_path: str) -> ModelConfig:
 
     # TODO: we need to make the mask obj dynamic here.
     pe_model: PositionalEncoding = TYPE_TO_IMPLEMENTATION[pe_config.pe_type.value]
-    pe_args = build_pe_args(pe_config.pe_type, model_common, attention_config)
+    pe_args = build_pe_args(pe_config.pe_type, model_common, attention_config, device)
     pe = pe_model(**pe_args)
     rotation = None if pe_config.pe_type != SupportedPE.ROPE else pe
 
