@@ -260,7 +260,7 @@ def train(
         shuffle=state["shuffle"],
     )
 
-    test_phrase = dataset.encode_sentence("It is a good time to")
+    test_phrase = dataset.encode_sentence("It is a good time to").to(device)
     best_loss = np.inf
     for epoch in range(training_config.epochs):
         if state["sampler"]:
