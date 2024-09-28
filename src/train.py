@@ -77,12 +77,6 @@ class TokenDataSet(torch.utils.data.Dataset):
         tokens = self.enc.encode(sample_sentence)
         return torch.tensor(tokens).unsqueeze(0)
 
-    # def get_trian_test_split(self, ratio: float = 0.8):
-    #     split_idx = int(len(self.tokens) * ratio)
-    #     train = self.tokens[:split_idx]
-    #     test = self.tokens[split_idx:]
-    #     return train, test
-
     @staticmethod
     def get_train_test_split(dataset: torch.utils.data.Dataset, ratio: float = 0.8):
         train, test = torch.utils.data.random_split(dataset, [ratio, 1 - ratio])
