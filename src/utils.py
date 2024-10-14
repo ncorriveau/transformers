@@ -61,8 +61,10 @@ TYPE_TO_IMPLEMENTATION = {
     "sinusoidal": SinusoidalPE,
     "rope": RotaryEmbedding,
     "gelu": nn.GELU,
+    "silu": nn.SiLU,
     "layer": nn.LayerNorm,
     "batch": nn.BatchNorm1d,
+    "rms": nn.RMSNorm,
 }
 
 
