@@ -15,12 +15,13 @@ from typing_extensions import Self
 
 from .model import Common, ModelConfig
 from .transformer.attention import Attention, Mask
+from .transformer.norms import RMSNorm
 from .transformer.positional_encoding import (
     PositionalEncoding,
     RotaryEmbedding,
     SinusoidalPE,
 )
-from .transformer.transformer import FeedForward, TransformerBlock
+from .transformer.transformer import FeedForward, SwiGLU, TransformerBlock
 
 
 class SupportedPE(Enum):
@@ -62,9 +63,10 @@ TYPE_TO_IMPLEMENTATION = {
     "rope": RotaryEmbedding,
     "gelu": nn.GELU,
     "silu": nn.SiLU,
+    "swiglu": SwiGLU,
     "layer": nn.LayerNorm,
     "batch": nn.BatchNorm1d,
-    "rms": nn.RMSNorm,
+    "rms": RMSNorm,
 }
 
 
@@ -304,6 +306,9 @@ def build_model_config(file_path: str, device: torch.device) -> ModelConfig:
         output_drop=attention_config.output_drop,
     )
     activation = TYPE_TO_IMPLEMENTATION[ffn_config.activation_func.value]
+    if ffn_config.activation_func == SupportedActivations.SWIGLU:
+        activation = activation(hidden_size=model_common.hidden_size)
+
     ffn = FeedForward(
         hidden_size=model_common.hidden_size,
         ffn_size=ffn_config.ffn_size,

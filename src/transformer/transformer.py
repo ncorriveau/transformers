@@ -5,6 +5,20 @@ from .attention import Attention
 from .positional_encoding import PositionalEncoding, SinusoidalPE
 
 
+class SwiGLU(nn.Module):
+    def __init__(self, hidden_size: int):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.fc1 = nn.Linear(hidden_size, hidden_size * 2)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out, gate = self.fc1(x).reshape(-1, 2, self.hidden_size).unbind(dim=1)
+        gate = nn.SiLU(gate)
+        out = out * gate
+        return self.fc2(out)
+
+
 class FeedForward(nn.Module):
     def __init__(
         self,
