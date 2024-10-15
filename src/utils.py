@@ -307,7 +307,7 @@ def build_model_config(file_path: str, device: torch.device) -> ModelConfig:
     )
     activation = TYPE_TO_IMPLEMENTATION[ffn_config.activation_func.value]
     if ffn_config.activation_func == SupportedActivations.SWIGLU:
-        activation = activation(hidden_size=model_common.hidden_size)
+        activation = activation(hidden_size=ffn_config.ffn_size)
 
     ffn = FeedForward(
         hidden_size=model_common.hidden_size,
