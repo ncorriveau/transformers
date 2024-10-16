@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import yaml
@@ -61,8 +62,8 @@ class SupportedDistStrat(Enum):
 TYPE_TO_IMPLEMENTATION = {
     "sinusoidal": SinusoidalPE,
     "rope": RotaryEmbedding,
-    "gelu": nn.GELU,
-    "silu": nn.SiLU,
+    "gelu": F.gelu,
+    "silu": F.silu,
     "swiglu": SwiGLU,
     "layer": nn.LayerNorm,
     "batch": nn.BatchNorm1d,
