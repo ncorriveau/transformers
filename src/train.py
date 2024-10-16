@@ -115,7 +115,7 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
             model = DDP(
                 model, device_ids=[state["rank"]] if torch.cuda.is_available() else None
             )
-        # doesnt actually work yet
+        # TODO: get this to work
         case SupportedDistStrat.FSDP:
             auto_wrap_policy = partial(size_based_auto_wrap_policy, min_num_params=1e5)
             model = FSDP(

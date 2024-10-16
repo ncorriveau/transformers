@@ -20,7 +20,7 @@ positional_encoding:
 
 feed_forward:
   ffn_size: 2048
-  activation_func: 'gelu'
+  activation_func: 'swiglu'
   dropout: 0.1
 
 norm: 

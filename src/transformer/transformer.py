@@ -1,8 +1,26 @@
+from typing import Any, Callable
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .attention import Attention
 from .positional_encoding import PositionalEncoding, SinusoidalPE
+
+
+class SwiGLU(nn.Module):
+    def __init__(self, hidden_size: int):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.fc1 = nn.Linear(hidden_size, hidden_size * 2)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, S, D = x.size()
+        out, gate = self.fc1(x).reshape(B, S, 2, self.hidden_size).unbind(dim=2)
+        gate = F.silu(gate)
+        out = out * gate
+        return self.fc2(out)
 
 
 class FeedForward(nn.Module):
@@ -10,12 +28,12 @@ class FeedForward(nn.Module):
         self,
         hidden_size: int,
         ffn_size: int,
-        activation: nn.Module = nn.GELU,
+        activation: Callable[[torch.Tensor], torch.Tensor] = F.gelu,
         output_drop: float = 0.1,
     ):
         super().__init__()
         self.fc1 = nn.Linear(hidden_size, ffn_size)
-        self.activation = activation()
+        self.activation = activation
         self.fc2 = nn.Linear(ffn_size, hidden_size)
         self.output_drop = nn.Dropout(output_drop)
 
