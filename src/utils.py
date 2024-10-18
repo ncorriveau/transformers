@@ -40,6 +40,7 @@ class SupportedActivations(Enum):
 class SupportedNorms(Enum):
     LAYER = "layer"
     BATCH = "batch"
+    RMS = "rms"
 
 
 class SupportedNormPlacements(Enum):
