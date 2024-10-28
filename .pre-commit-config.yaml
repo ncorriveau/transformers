@@ -1,12 +1,24 @@
 repos:
-  - repo: https://github.com/psf/black
-    rev: 24.3.0
-    hooks:
-      - id: black
-        language_version: python3.10
-        stages: [commit]
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        stages: [commit]
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.3.0
+  hooks:
+    - id: ruff
+      args: [--fix]
+      files: ^src/
+    - id: ruff-format
+      files: ^src/
+
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.5.0
+  hooks:
+    - id: trailing-whitespace
+      files: ^src/
+    - id: end-of-file-fixer
+      files: ^src/
+    - id: check-yaml
+    - id: check-added-large-files
+      args: ['--maxkb=1024']
+    - id: debug-statements
+      files: ^src/
+    - id: check-case-conflict
+      files: ^src/
