@@ -1,31 +1,31 @@
 ## implement popular attention variants using a generalized framework in PyTorch ##
+"""
+Design:
+    Vanilla attention variants (used of KV efficiency), the attention mechanism
+    is parameterized by the number of q, k, v heads that will be used
+        MQA: N heads for Query, 1 for K, V
+        GQA: N heads for Query, M for K, V (typically M = N / 8)
+        MHA: N heads for Query, K, V
+    Attention blocks will also have mask variants, should we should have
+    a Mask type that contains different variants that can be passed into the Attention mechanism.
+        for example, we have causal attention mask, but sliding window attention
+        could also be viewed as a form of mask.
+        Look into global + sliding window attention as well to see if
+        this fits the mask paradigm.
+    Engines: we will separate out the actual computatational engine for the
+    attention operations into separate modules that can be used with
+    your specific attention variation. Starter ideasa include:
+        - FlashAttention
+        - Paged Attention
+        - Ring Attention
+
+"""
+
 import math
 from functools import cached_property
 
 import torch
 import torch.nn as nn
-
-"""
-Design:
-    Vanilla attention variants (used of KV efficiency), the attention mechanism 
-    is parameterized by the number of q, k, v heads that will be used 
-        MQA: N heads for Query, 1 for K, V 
-        GQA: N heads for Query, M for K, V (typically M = N / 8)
-        MHA: N heads for Query, K, V
-    Attention blocks will also have mask variants, should we should have 
-    a Mask type that contains different variants that can be passed into the Attention mechanism. 
-        for example, we have causal attention mask, but sliding window attention 
-        could also be viewed as a form of mask. 
-        Look into global + sliding window attention as well to see if 
-        this fits the mask paradigm. 
-    Engines: we will separate out the actual computatational engine for the 
-    attention operations into separate modules that can be used with 
-    your specific attention variation. Starter ideasa include:
-        - FlashAttention
-        - Paged Attention 
-        - Ring Attention
-
-"""
 
 
 class Mask:
@@ -60,7 +60,7 @@ class Mask:
         if (torch.max(v_indices) >= self.context_size) | (
             torch.max(h_indices) >= self.context_size
         ):
-            raise ValueError("Indices cannot exceed context size")
+            raise ValueError('Indices cannot exceed context size')
 
         mask = torch.zeros(self.context_size, self.context_size, dtype=torch.bool)
         mask[:, v_indices] = True
@@ -110,20 +110,20 @@ class Attention(nn.Module):
 
         assert (
             hidden_size % num_heads_q == 0
-        ), "Hidden size must be divisible by the number query of heads"
+        ), 'Hidden size must be divisible by the number query of heads'
         assert (
             hidden_size % num_heads_k == 0
-        ), "Hidden size must be divisible by the number key of heads"
+        ), 'Hidden size must be divisible by the number key of heads'
         assert (
             hidden_size % num_heads_v == 0
-        ), "Hidden size must be divisible by the number of value heads"
+        ), 'Hidden size must be divisible by the number of value heads'
 
         assert (
             num_heads_q % num_heads_k == 0
-        ), "Number of query heads must be divisible by the number of key heads"
+        ), 'Number of query heads must be divisible by the number of key heads'
         assert (
             num_heads_q % num_heads_v == 0
-        ), "Number of query heads must be divisible by the number of value heads"
+        ), 'Number of query heads must be divisible by the number of value heads'
 
         self.num_heads_q = num_heads_q
         self.num_heads_k = num_heads_k
@@ -146,7 +146,7 @@ class Attention(nn.Module):
         self.W_0 = nn.Linear(num_heads_q * self.dim_v, hidden_size)
 
         # must be context size, context size for the attention mask
-        assert mask.size() == (context_size, context_size), "Mask size is invalid"
+        assert mask.size() == (context_size, context_size), 'Mask size is invalid'
         self.mask = ~mask.view(1, 1, context_size, context_size)
 
     def forward(self, input: torch.Tensor):
@@ -174,7 +174,7 @@ class Attention(nn.Module):
         # take only the mask tokens up to the sequence length
         device = input.device
         self.mask = self.mask.to(device)
-        attn = attn.masked_fill(self.mask[:, :, :S, :S], float("-inf"))
+        attn = attn.masked_fill(self.mask[:, :, :S, :S], float('-inf'))
         attn = attn.softmax(dim=-1)
 
         # now we can multiply the attention with the value matrix
@@ -185,7 +185,7 @@ class Attention(nn.Module):
         return self.W_0(x)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     B = 32  # batch size
     S = 10  # sequence length
     H = 768  # hidden size

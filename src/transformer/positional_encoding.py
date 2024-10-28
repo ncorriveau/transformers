@@ -1,6 +1,5 @@
 from typing import MutableMapping, Optional, Tuple
 
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -28,7 +27,7 @@ class SinusoidalPE(PositionalEncoding):
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
 
-        self.register_buffer("pe", pe.unsqueeze(0), persistent=False)
+        self.register_buffer('pe', pe.unsqueeze(0), persistent=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         seq_len = x.size(1)
@@ -67,7 +66,7 @@ class RoPE(PositionalEncoding):
         # [max_seq_len, dim // 2, 2]
         # so here we just calculate cos, sin for all of our thetas thus the dim 2 = cos, sin and dim // 2 = thetas
         cache = torch.stack([torch.cos(idx_theta), torch.sin(idx_theta)], dim=-1)
-        self.register_buffer("cache", cache, persistent=False)
+        self.register_buffer('cache', cache, persistent=False)
 
     def forward(self, x: torch.Tensor, input_pos: Optional[int] = None) -> torch.Tensor:
         # input tensor has shape [b, s, n_h, h_d]
@@ -147,17 +146,17 @@ class RotaryEmbedding(nn.Module):
         self, seq_len: int, device: torch.device
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         if (
-            (pos_sin := self.__cache.get("rope_pos_sin")) is not None
-            and (pos_cos := self.__cache.get("rope_pos_cos")) is not None
+            (pos_sin := self.__cache.get('rope_pos_sin')) is not None
+            and (pos_cos := self.__cache.get('rope_pos_cos')) is not None
             and pos_sin.shape[1] >= seq_len
             and pos_cos.shape[1] >= seq_len
         ):
             if pos_sin.device != device:
                 pos_sin = pos_sin.to(device)
-                self.__cache["rope_pos_sin"] = pos_sin
+                self.__cache['rope_pos_sin'] = pos_sin
             if pos_cos.device != device:
                 pos_cos = pos_cos.to(device)
-                self.__cache["rope_pos_cos"] = pos_cos
+                self.__cache['rope_pos_cos'] = pos_cos
             return pos_sin[:, :seq_len, :, :], pos_cos[:, :seq_len, :, :]
 
         with torch.autocast(device.type, enabled=False):
@@ -167,14 +166,14 @@ class RotaryEmbedding(nn.Module):
                 ** (torch.arange(0, dim, 2, device=device, dtype=torch.float) / dim)
             )
             seq = torch.arange(seq_len, device=device, dtype=torch.float)
-            freqs = torch.einsum("i , j -> i j", seq, inv_freq)
+            freqs = torch.einsum('i , j -> i j', seq, inv_freq)
             positions = torch.cat((freqs, freqs), dim=-1)
             pos_sin, pos_cos = (
                 positions.sin()[None, :, None, :],
                 positions.cos()[None, :, None, :],
             )
-        self.__cache["rope_pos_sin"] = pos_sin
-        self.__cache["rope_pos_cos"] = pos_cos
+        self.__cache['rope_pos_sin'] = pos_sin
+        self.__cache['rope_pos_cos'] = pos_cos
         return pos_sin, pos_cos
 
     def rotate_half(self, x: torch.Tensor) -> torch.Tensor:
@@ -214,7 +213,7 @@ class RotaryEmbedding(nn.Module):
         return q_.type_as(q), k_.type_as(k)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     hidden_size = 2
     context_size = 3
     batch_size = 1
@@ -225,51 +224,51 @@ if __name__ == "__main__":
     cache = BufferCache()
     pe2 = RotaryEmbedding(hidden_size, context_size, num_heads, cache, base=10)
     actual_result = pe2(x1, x2)
-    print(f"original x1: {x1.squeeze()},\n rotated: {actual_result[0].squeeze()}")
-    print(f"original x2: {x2.squeeze()},\n rotated: {actual_result[1].squeeze()}")
+    print(f'original x1: {x1.squeeze()},\n rotated: {actual_result[0].squeeze()}')
+    print(f'original x2: {x2.squeeze()},\n rotated: {actual_result[1].squeeze()}')
 
-    # Plotting the vectors
-    def plot_vectors(original, rotated, title):
-        import matplotlib.pyplot as plt
+    # # Plotting the vectors
+    # def plot_vectors(original, rotated, title):
+    #     import matplotlib.pyplot as plt
 
-        plt.figure()
-        plt.quiver(
-            0,
-            0,
-            original[0],
-            original[1],
-            angles="xy",
-            scale_units="xy",
-            scale=1,
-            color="r",
-            label="Original",
-        )
-        plt.quiver(
-            0,
-            0,
-            rotated[0],
-            rotated[1],
-            angles="xy",
-            scale_units="xy",
-            scale=1,
-            color="b",
-            label="Rotated",
-        )
-        plt.xlim(-1, 1)
-        plt.ylim(-1, 1)
-        plt.axhline(0, color="grey", lw=0.5)
-        plt.axvline(0, color="grey", lw=0.5)
-        plt.grid()
-        plt.legend()
-        plt.title(title)
-        plt.show()
+    #     plt.figure()
+    #     plt.quiver(
+    #         0,
+    #         0,
+    #         original[0],
+    #         original[1],
+    #         angles="xy",
+    #         scale_units="xy",
+    #         scale=1,
+    #         color="r",
+    #         label="Original",
+    #     )
+    #     plt.quiver(
+    #         0,
+    #         0,
+    #         rotated[0],
+    #         rotated[1],
+    #         angles="xy",
+    #         scale_units="xy",
+    #         scale=1,
+    #         color="b",
+    #         label="Rotated",
+    #     )
+    #     plt.xlim(-1, 1)
+    #     plt.ylim(-1, 1)
+    #     plt.axhline(0, color="grey", lw=0.5)
+    #     plt.axvline(0, color="grey", lw=0.5)
+    #     plt.grid()
+    #     plt.legend()
+    #     plt.title(title)
+    #     plt.show()
 
-    # Extracting the vectors
-    original_x1 = x1.squeeze().numpy()[1]
-    rotated_x1 = actual_result[0].squeeze().detach().numpy()[1]
-    original_x2 = x2.squeeze().numpy()[1]
-    rotated_x2 = actual_result[1].squeeze().detach().numpy()[1]
+    # # Extracting the vectors
+    # original_x1 = x1.squeeze().numpy()[1]
+    # rotated_x1 = actual_result[0].squeeze().detach().numpy()[1]
+    # original_x2 = x2.squeeze().numpy()[1]
+    # rotated_x2 = actual_result[1].squeeze().detach().numpy()[1]
 
-    # Plot the vectors
-    plot_vectors(original_x1, rotated_x1, "Vector x1 Before and After Rotation")
-    plot_vectors(original_x2, rotated_x2, "Vector x2 Before and After Rotation")
+    # # Plot the vectors
+    # plot_vectors(original_x1, rotated_x1, "Vector x1 Before and After Rotation")
+    # plot_vectors(original_x2, rotated_x2, "Vector x2 Before and After Rotation")

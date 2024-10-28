@@ -1,11 +1,11 @@
-from typing import Any, Callable
+from typing import Callable
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from .attention import Attention
-from .positional_encoding import PositionalEncoding, SinusoidalPE
+from .positional_encoding import PositionalEncoding
 
 
 class SwiGLU(nn.Module):
@@ -72,22 +72,22 @@ class TransformerBlock(nn.Module):
         self.component_types = []
         for component in transformer_config:
             match component:
-                case "attention":
+                case 'attention':
                     self.components.append(self.attention)
-                case "feed_forward":
+                case 'feed_forward':
                     self.components.append(self.ffn)
-                case "norm":
+                case 'norm':
                     self.components.append(self.norm)
-                case "positional_encoding":
+                case 'positional_encoding':
                     self.components.append(self.positional_encoding)
-                case "skip":
+                case 'skip':
                     self.components.append(Skip())
             self.component_types.append(component)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         skip_input = None
         for component, component_type in zip(self.components, self.component_types):
-            if component_type == "skip":
+            if component_type == 'skip':
                 x = component(x, skip_input)
                 skip_input = None
             else:

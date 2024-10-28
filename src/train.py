@@ -4,7 +4,6 @@ Training loop for a generic LLM model here
 
 import os
 from contextlib import nullcontext
-from dataclasses import dataclass
 from functools import partial
 from itertools import islice
 from typing import Any
@@ -23,7 +22,7 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import (
     BackwardPrefetch,
     CPUOffload,
 )
-from torch.distributed.fsdp.wrap import enable_wrap, size_based_auto_wrap_policy, wrap
+from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
 from torch.nn.parallel import DataParallel
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
@@ -43,7 +42,7 @@ from .utils import (
 def setup_checkpoint_dir() -> str:
     # get project root dir
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    checkpoints_dir = os.path.join(root_dir, "checkpoints")
+    checkpoints_dir = os.path.join(root_dir, 'checkpoints')
     os.makedirs(checkpoints_dir, exist_ok=True)
     return checkpoints_dir
 
@@ -51,11 +50,11 @@ def setup_checkpoint_dir() -> str:
 class TokenDataSet(torch.utils.data.Dataset):
     def __init__(self, tokenizer: str, seq_len: int, data_path: str):
         try:
-            with open(data_path, "r") as f:
+            with open(data_path, 'r') as f:
                 data = f.read()
 
         except Exception as e:
-            print(f"Error loading data: {e}")
+            print(f'Error loading data: {e}')
             raise e
 
         self.enc = tiktoken.get_encoding(tokenizer)
@@ -71,7 +70,7 @@ class TokenDataSet(torch.utils.data.Dataset):
         return torch.tensor(x), torch.tensor(y)
 
     def __repr__(self):
-        return f"TokenDataSet with {len(self.tokens)} tokens"
+        return f'TokenDataSet with {len(self.tokens)} tokens'
 
     def encode_sentence(self, sample_sentence: str) -> torch.Tensor:
         tokens = self.enc.encode(sample_sentence)
@@ -83,37 +82,37 @@ class TokenDataSet(torch.utils.data.Dataset):
         return train, test
 
 
-def setup(rank, world_size, backend: str = "nccl") -> tuple[int, int]:
+def setup(rank, world_size, backend: str = 'nccl') -> tuple[int, int]:
     """
     Set up the training state for distributed training if available
     """
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "12355"
-    print(f"Setting up process {rank + 1}/{world_size}")
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+    print(f'Setting up process {rank + 1}/{world_size}')
 
     # if world_size > 1 then we start a dist process
     if world_size > 1:
         dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
-        device = torch.device(f"cuda:{rank}")
-        device_type = "cuda"
+        device = torch.device(f'cuda:{rank}')
+        device_type = 'cuda'
         torch.cuda.set_device(device)
     else:
-        device_type = "cuda" if torch.cuda.is_available() else "cpu"
+        device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
         device = torch.device(device_type)
 
     return {
-        "device": device,
-        "device_type": device_type,
+        'device': device,
+        'device_type': device_type,
     }
 
 
 def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
-    if state["world_size"] == 1:
-        return model.to(state["device"])
+    if state['world_size'] == 1:
+        return model.to(state['device'])
     match strategy:
         case SupportedDistStrat.DDP:
             model = DDP(
-                model, device_ids=[state["rank"]] if torch.cuda.is_available() else None
+                model, device_ids=[state['rank']] if torch.cuda.is_available() else None
             )
         # TODO: get this to work
         case SupportedDistStrat.FSDP:
@@ -126,7 +125,7 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
             )
         case SupportedDistStrat.DATA_PARALLEL:
             if torch.cuda.is_available():
-                model = DataParallel(model, device_ids=[state["rank"]])
+                model = DataParallel(model, device_ids=[state['rank']])
             else:
                 model = model
         case _:
@@ -158,15 +157,15 @@ def get_val_loss(
 
 
 def patch_numpy():
-    if not hasattr(np, "int"):
+    if not hasattr(np, 'int'):
         np.int = int
-    if not hasattr(np, "float"):
+    if not hasattr(np, 'float'):
         np.float = float
-    if not hasattr(np, "bool"):
+    if not hasattr(np, 'bool'):
         np.bool = bool
-    if not hasattr(np, "object"):
+    if not hasattr(np, 'object'):
         np.object = object
-    if not hasattr(np, "str"):
+    if not hasattr(np, 'str'):
         np.str = str
 
 
@@ -180,9 +179,9 @@ def train(
 ):
     # initial set up of training state
     state: dict[str, Any] = setup(rank, world_size)
-    model_config: ModelConfig = build_model_config(model_config_path, state["device"])
+    model_config: ModelConfig = build_model_config(model_config_path, state['device'])
     training_config: TrainingConfig = build_training_config(training_config_path)
-    dataset = TokenDataSet("gpt2", model_config.common.context_size, data_path)
+    dataset = TokenDataSet('gpt2', model_config.common.context_size, data_path)
     check_dir = setup_checkpoint_dir()
     sampler = None
 
@@ -193,21 +192,21 @@ def train(
 
     state.update(
         {
-            "world_size": world_size,
-            "rank": rank,
-            "sampler": sampler,
-            "shuffle": sampler is None,
+            'world_size': world_size,
+            'rank': rank,
+            'sampler': sampler,
+            'shuffle': sampler is None,
         }
     )
-    device = state["device"]
-    print(f"Rank {rank} using device: {device}")
+    device = state['device']
+    print(f'Rank {rank} using device: {device}')
 
     # from karpathy's nanogpt
     ctx = (
         nullcontext()
-        if state["device_type"] == "cpu" or not training_config.use_mp
+        if state['device_type'] == 'cpu' or not training_config.use_mp
         else torch.autocast(
-            device_type=state["device_type"], dtype=training_config.dtype
+            device_type=state['device_type'], dtype=training_config.dtype
         )
     )
 
@@ -219,20 +218,20 @@ def train(
 
     if checkpoint_path:
         if not os.path.exists(checkpoint_path):
-            raise FileNotFoundError(f"Checkpoint file {checkpoint_path} not found")
+            raise FileNotFoundError(f'Checkpoint file {checkpoint_path} not found')
 
         checkpoint = torch.load(checkpoint_path, map_location=device)
-        model.load_state_dict(checkpoint["model"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
-        best_loss = checkpoint["best_val_loss"]
-        print(f"Loaded checkpoint from {checkpoint_path}")
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        best_loss = checkpoint['best_val_loss']
+        print(f'Loaded checkpoint from {checkpoint_path}')
 
     if training_config.compile:
         # this is a hack to deal with old versions of numpy and newer torch w compile
         patch_numpy()
-        print("Compiling model... this may take a minute")
+        print('Compiling model... this may take a minute')
         model = torch.compile(model)
-        print("Model compiled")
+        print('Model compiled')
 
     model: CausalLLM = distribute_model(
         model, state, training_config.distributed_strategy
@@ -244,21 +243,21 @@ def train(
     train_loader = DataLoader(
         train,
         batch_size=worker_batch_size,
-        sampler=state["sampler"],
-        shuffle=state["shuffle"],
+        sampler=state['sampler'],
+        shuffle=state['shuffle'],
     )
     test_loader = DataLoader(
         test,
         batch_size=worker_batch_size,
-        sampler=state["sampler"],
-        shuffle=state["shuffle"],
+        sampler=state['sampler'],
+        shuffle=state['shuffle'],
     )
 
-    test_phrase = dataset.encode_sentence("It is a good time to").to(device)
+    test_phrase = dataset.encode_sentence('It is a good time to').to(device)
     best_loss = np.inf
     for epoch in range(training_config.epochs):
-        if state["sampler"]:
-            state["sampler"].set_epoch(epoch)
+        if state['sampler']:
+            state['sampler'].set_epoch(epoch)
         step = 0
         for x, y in train_loader:
             optimizer.zero_grad()
@@ -283,25 +282,25 @@ def train(
             scaler.step(optimizer)
             scaler.update()
 
-            print(f"Rank {rank}, Epoch {epoch}, Step {step}, Loss: {loss.item()}")
+            print(f'Rank {rank}, Epoch {epoch}, Step {step}, Loss: {loss.item()}')
             # run sample output on our test sentence
             if step % 10 == 0 and step > 0 and rank == 0:
                 # TODO: implement get_val_loss
                 val_loss = get_val_loss(model, test_loader, ctx, device)
-                print(f"Validation loss: {val_loss}")
+                print(f'Validation loss: {val_loss}')
                 if val_loss < best_loss and step > 0:
                     best_loss = val_loss
                     checkpoint = {
-                        "model": model.state_dict(),
-                        "optimizer": optimizer.state_dict(),
-                        "model_config": model_config_path,
-                        "training_config": training_config_path,
-                        "iter_num": step,
-                        "epoch": epoch,
-                        "best_val_loss": best_loss,
+                        'model': model.state_dict(),
+                        'optimizer': optimizer.state_dict(),
+                        'model_config': model_config_path,
+                        'training_config': training_config_path,
+                        'iter_num': step,
+                        'epoch': epoch,
+                        'best_val_loss': best_loss,
                     }
-                    torch.save(checkpoint, os.path.join(check_dir, "best_model.pth"))
-                    print(f"Saved best model at epoch {epoch} step {step}")
+                    torch.save(checkpoint, os.path.join(check_dir, 'best_model.pth'))
+                    print(f'Saved best model at epoch {epoch} step {step}')
 
                 with torch.no_grad():
                     model.eval()
@@ -319,15 +318,15 @@ def train(
 
 
 @click.command()
-@click.option("--model-config-path", type=str, required=True)
-@click.option("--training-config-path", type=str, required=True)
-@click.option("--data-path", type=str, required=True)
+@click.option('--model-config-path', type=str, required=True)
+@click.option('--training-config-path', type=str, required=True)
+@click.option('--data-path', type=str, required=True)
 @click.option(
-    "--checkpoint-path",
+    '--checkpoint-path',
     default=None,
     type=str,
     required=False,
-    help="Path to previously saved checkpoint",
+    help='Path to previously saved checkpoint',
 )
 def main(
     model_config_path: str,
@@ -352,5 +351,5 @@ def main(
     )
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

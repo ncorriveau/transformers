@@ -57,7 +57,7 @@ class CausalLLM(nn.Module):
         x = self.token_embedding(x)
 
         # add positional encoding if relevant
-        x = x + self.pe(x) if type(self.pe) == SinusoidalPE else x
+        x = x + self.pe(x) if isinstance(x, SinusoidalPE) else x
 
         # maybe an optional drop out here
 
@@ -101,7 +101,7 @@ class CausalLLM(nn.Module):
                 # optionally crop the logits to only the top k options
                 if top_k is not None:
                     v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                    logits[logits < v[:, [-1]]] = -float("Inf")
+                    logits[logits < v[:, [-1]]] = -float('Inf')
                 # apply softmax to convert logits to (normalized) probabilities
                 probs = F.softmax(logits, dim=-1)
                 idx_next = torch.multinomial(probs, num_samples=1)
@@ -111,10 +111,10 @@ class CausalLLM(nn.Module):
         return idx
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     import tiktoken
 
-    enc = tiktoken.get_encoding("gpt2")
+    enc = tiktoken.get_encoding('gpt2')
     tokens = enc.encode("It's a good itme to")
     tokens = torch.tensor(tokens).unsqueeze(0)
     print(tokens.size())  # 1 x num_tokens

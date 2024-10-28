@@ -26,125 +26,125 @@ from .transformer.transformer import FeedForward, SwiGLU, TransformerBlock
 
 
 class SupportedPE(Enum):
-    SINUSOIDAL = "sinusoidal"
-    ROPE = "rope"
+    SINUSOIDAL = 'sinusoidal'
+    ROPE = 'rope'
     # LEARNABLE = "learnable"
 
 
 class SupportedActivations(Enum):
-    RELU = "relu"
-    GELU = "gelu"
-    SWIGLU = "swiglu"
+    RELU = 'relu'
+    GELU = 'gelu'
+    SWIGLU = 'swiglu'
 
 
 class SupportedNorms(Enum):
-    LAYER = "layer"
-    BATCH = "batch"
-    RMS = "rms"
+    LAYER = 'layer'
+    BATCH = 'batch'
+    RMS = 'rms'
 
 
 class SupportedNormPlacements(Enum):
-    PRE = "pre"
-    POST = "post"
+    PRE = 'pre'
+    POST = 'post'
 
 
 class SupportedMask(Enum):
-    CAUSAL = "causal"
-    SLIDING_WINDOW = "sliding_window"
-    GLOBAL = "global"
+    CAUSAL = 'causal'
+    SLIDING_WINDOW = 'sliding_window'
+    GLOBAL = 'global'
 
 
 class SupportedDistStrat(Enum):
-    DDP = "ddp"
-    FSDP = "fsdp"
-    DATA_PARALLEL = "data_parallel"
+    DDP = 'ddp'
+    FSDP = 'fsdp'
+    DATA_PARALLEL = 'data_parallel'
 
 
 TYPE_TO_IMPLEMENTATION = {
-    "sinusoidal": SinusoidalPE,
-    "rope": RotaryEmbedding,
-    "gelu": F.gelu,
-    "silu": F.silu,
-    "swiglu": SwiGLU,
-    "layer": nn.LayerNorm,
-    "batch": nn.BatchNorm1d,
-    "rms": RMSNorm,
+    'sinusoidal': SinusoidalPE,
+    'rope': RotaryEmbedding,
+    'gelu': F.gelu,
+    'silu': F.silu,
+    'swiglu': SwiGLU,
+    'layer': nn.LayerNorm,
+    'batch': nn.BatchNorm1d,
+    'rms': RMSNorm,
 }
 
 
 class ModelCommon(BaseModel):
-    hidden_size: int = Field(..., gt=0, description="The hidden size of the model")
-    context_size: int = Field(..., gt=0, description="The context size of the model")
-    vocab_size: int = Field(..., gt=0, description="The size of the vocabulary")
+    hidden_size: int = Field(..., gt=0, description='The hidden size of the model')
+    context_size: int = Field(..., gt=0, description='The context size of the model')
+    vocab_size: int = Field(..., gt=0, description='The size of the vocabulary')
     num_layers: int = Field(
-        ..., gt=0, description="The number of Transformer layers in the model"
+        ..., gt=0, description='The number of Transformer layers in the model'
     )
     weight_tying: bool = Field(
-        False, description="Whether to tie the weights of the token embedding and head"
+        False, description='Whether to tie the weights of the token embedding and head'
     )
 
 
 class AttentionConfig(BaseModel):
-    num_heads_q: int = Field(..., gt=0, description="Number of query heads")
-    num_heads_k: int = Field(..., gt=0, description="Number of key heads")
-    num_heads_v: int = Field(..., gt=0, description="Number of value heads")
+    num_heads_q: int = Field(..., gt=0, description='Number of query heads')
+    num_heads_k: int = Field(..., gt=0, description='Number of key heads')
+    num_heads_v: int = Field(..., gt=0, description='Number of value heads')
 
-    attn_drop: float = Field(..., description="Dropout rate for attention")
-    output_drop: float = Field(..., description="Dropout rate for output")
+    attn_drop: float = Field(..., description='Dropout rate for attention')
+    output_drop: float = Field(..., description='Dropout rate for output')
 
     mask: SupportedMask = Field(
-        SupportedMask.CAUSAL.value, description="The type of mask to use"
+        SupportedMask.CAUSAL.value, description='The type of mask to use'
     )
-    is_causal: bool = Field(..., description="Whether the mask is causal or not")
+    is_causal: bool = Field(..., description='Whether the mask is causal or not')
 
-    @field_validator("attn_drop", "output_drop")
+    @field_validator('attn_drop', 'output_drop')
     @classmethod
     def must_be_between_0_and_1(cls, v):
         if v < 0 or v > 1:
-            raise ValueError(f"Must be between 0 and 1")
+            raise ValueError('Must be between 0 and 1')
         return v
 
-    @model_validator(mode="after")
+    @model_validator(mode='after')
     def check_head_compatability(self) -> Self:
         assert (
             self.num_heads_q % self.num_heads_k == 0
-        ), "Number of query heads must be divisible by the number of key heads"
+        ), 'Number of query heads must be divisible by the number of key heads'
         assert (
             self.num_heads_q % self.num_heads_v == 0
-        ), "Number of query heads must be divisible by the number of value heads"
+        ), 'Number of query heads must be divisible by the number of value heads'
 
 
 class PEConfig(BaseModel):
     pe_type: SupportedPE = Field(
         ...,
-        description="The type of positional encoding to use",
+        description='The type of positional encoding to use',
     )
 
 
 class FeedForwardConfig(BaseModel):
-    ffn_size: int = Field(..., gt=0, description="The size of the feed forward network")
+    ffn_size: int = Field(..., gt=0, description='The size of the feed forward network')
     activation_func: SupportedActivations = Field(
-        ..., description="The activation function to use"
+        ..., description='The activation function to use'
     )
-    dropout: float = Field(..., description="Dropout rate for feed forward network")
+    dropout: float = Field(..., description='Dropout rate for feed forward network')
 
-    @field_validator("dropout")
+    @field_validator('dropout')
     @classmethod
     def must_be_between_0_and_1(cls, v: int):
         if v < 0 or v > 1:
-            raise ValueError(f"Must be between 0 and 1")
+            raise ValueError('Must be between 0 and 1')
         return v
 
 
 class NormConfig(BaseModel):
     norm_type: SupportedNorms = Field(
-        ..., description="The type of normalization to use"
+        ..., description='The type of normalization to use'
     )
 
 
 class TransformerBlockConfig(BaseModel):
     transformer_block: List[str] = Field(
-        ..., description="The component order of the transformer block"
+        ..., description='The component order of the transformer block'
     )
 
 
@@ -168,40 +168,40 @@ class TrainingConfig:
 
 class TrainConfig(BaseModel):
     optimizer_name: str = Field(
-        ..., description="The name of the optimizer to use e.g. AdamW"
+        ..., description='The name of the optimizer to use e.g. AdamW'
     )
     optimizer_args: Dict[str, Union[float, List[float], str]] = Field(
         default_factory=dict
     )
-    scheduler_name: str = Field(description="The name of the lr scheduler to use")
+    scheduler_name: str = Field(description='The name of the lr scheduler to use')
     scheduler_args: Dict[str, Union[float, List[float], str]] = Field(
         default_factory=dict
     )
     clip_grad_norm: float = Field(
-        1.0, description="The value to clip the gradient norm to, defaults to 0 = off"
+        1.0, description='The value to clip the gradient norm to, defaults to 0 = off'
     )
     use_grad_scaler: bool = Field(
-        True, description="Whether to use a gradient scaler - cuda must be available"
+        True, description='Whether to use a gradient scaler - cuda must be available'
     )
-    batch_size: int = Field(..., gt=0, description="The batch size to use")
-    epochs: int = Field(..., gt=0, description="The number of epochs to train for")
+    batch_size: int = Field(..., gt=0, description='The batch size to use')
+    epochs: int = Field(..., gt=0, description='The number of epochs to train for')
     distributed_strategy: SupportedDistStrat = Field(
-        None, description="The distributed strategy to use"
+        None, description='The distributed strategy to use'
     )
-    dtype: str = Field("float32", description="The dtype to use for training")
-    use_mp: bool = Field(True, description="Whether to use mixed precision training")
+    dtype: str = Field('float32', description='The dtype to use for training')
+    use_mp: bool = Field(True, description='Whether to use mixed precision training')
     compile: bool = Field(
-        True, description="Whether to compile the model - cuda must be available"
+        True, description='Whether to compile the model - cuda must be available'
     )
 
-    @field_validator("optimizer_name")
+    @field_validator('optimizer_name')
     @classmethod
     def validate_optimizer_name(cls, v: str):
         if not hasattr(optim, v):
             raise ValueError(f"'{v}' is not a valid optimizer in torch.optim")
         return v
 
-    @field_validator("scheduler_name")
+    @field_validator('scheduler_name')
     @classmethod
     def validate_scheduler_name(cls, v: str):
         if not hasattr(lr_scheduler, v):
@@ -210,7 +210,7 @@ class TrainConfig(BaseModel):
             )
         return v
 
-    @field_validator("optimizer_args")
+    @field_validator('optimizer_args')
     @classmethod
     def parse_numeric_args(cls, v: Dict[str, Any]):
         for key, value in v.items():
@@ -221,27 +221,27 @@ class TrainConfig(BaseModel):
                     pass  # Keep as string if it can't be converted to float
         return v
 
-    @field_validator("dtype")
+    @field_validator('dtype')
     @classmethod
     def validate_dtype(cls, v: str):
         if not hasattr(torch, v):
             raise ValueError(f"'{v}' is not a valid dtype in torch")
         return getattr(torch, v)
 
-    @field_validator("compile")
+    @field_validator('compile')
     @classmethod
     def validate_compile(cls, v: bool):
-        if version.parse(torch.__version__) < version.parse("2.0.0") and v:
-            print(f"Warning: 'compile' is only available in torch >= 2.0.0")
+        if version.parse(torch.__version__) < version.parse('2.0.0') and v:
+            print("Warning: 'compile' is only available in torch >= 2.0.0")
             return False
         return v
 
     class Config:
-        extra = "allow"  # This allows for additional fields in the args
+        extra = 'allow'  # This allows for additional fields in the args
 
 
 def load_config(file_path: str) -> dict[str, Any]:
-    with open(file_path, "r") as file:
+    with open(file_path, 'r') as file:
         yaml_data = yaml.safe_load(file)
     return yaml_data
 
@@ -257,11 +257,11 @@ def build_pe_args(
     extra_args = dict()
     if pe_type == SupportedPE.ROPE:
         extra_args.update(
-            {"num_q_k_heads": attention_config.num_heads_q, "device": device}
+            {'num_q_k_heads': attention_config.num_heads_q, 'device': device}
         )
     return {
-        "hidden_size": model_common.hidden_size,
-        "context_size": model_common.context_size,
+        'hidden_size': model_common.hidden_size,
+        'context_size': model_common.context_size,
         **extra_args,
     }
 
@@ -273,22 +273,22 @@ def build_model_config(file_path: str, device: torch.device) -> ModelConfig:
 
     """
     config = load_config(file_path)
-    model_common = ModelCommon(**config["common"])
-    attention_config = AttentionConfig(**config["attention"])
-    pe_config = PEConfig(**config["positional_encoding"])
-    ffn_config = FeedForwardConfig(**config["feed_forward"])
-    norm_config = NormConfig(**config["norm"])
-    block_config = TransformerBlockConfig(transformer_block=config["transformer_block"])
+    model_common = ModelCommon(**config['common'])
+    attention_config = AttentionConfig(**config['attention'])
+    pe_config = PEConfig(**config['positional_encoding'])
+    ffn_config = FeedForwardConfig(**config['feed_forward'])
+    norm_config = NormConfig(**config['norm'])
+    block_config = TransformerBlockConfig(transformer_block=config['transformer_block'])
 
     # make sure the components in the block are defined in the config
     valid_components = any(
         [
             component in config.keys()
             for component in block_config.transformer_block
-            if component != "skip"
+            if component != 'skip'
         ]
     )
-    assert valid_components, "Transformer components must be defined in the config file"
+    assert valid_components, 'Transformer components must be defined in the config file'
 
     # TODO: we need to make the mask obj dynamic here.
     pe_model: PositionalEncoding = TYPE_TO_IMPLEMENTATION[pe_config.pe_type.value]
@@ -351,7 +351,7 @@ def build_model_config(file_path: str, device: torch.device) -> ModelConfig:
 
 def build_training_config(training_config: str) -> TrainingConfig:
     config = load_config(training_config)
-    dtype_is_f16 = config.get("dtype") == "float16"
+    dtype_is_f16 = config.get('dtype') == 'float16'
     cuda_available = torch.cuda.is_available()
 
     validated_config = TrainConfig(**config)
@@ -381,8 +381,8 @@ def build_training_config(training_config: str) -> TrainingConfig:
     )
 
 
-if __name__ == "__main__":
-    model_config = build_model_config("./configs/models/gpt2.yaml")
+if __name__ == '__main__':
+    model_config = build_model_config('./configs/models/gpt2.yaml')
     # training_config = build_training_config("./configs/models/gpt2.yaml")
     print(model_config)
     # file_path = "./configs/models/gpt2.yaml"

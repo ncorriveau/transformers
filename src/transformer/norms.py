@@ -1,5 +1,5 @@
 """
-Implementation of normalizations that may not be found in PyTorch 
+Implementation of normalizations that may not be found in PyTorch
 """
 
 import torch

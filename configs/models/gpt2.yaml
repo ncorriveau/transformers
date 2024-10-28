@@ -14,7 +14,7 @@ attention:
   attn_drop: 0.1
   output_drop: 0.1
 
-# figure out how to add additional args to all of these 
+# figure out how to add additional args to all of these
 positional_encoding:
   pe_type: 'rope'
 
@@ -23,16 +23,13 @@ feed_forward:
   activation_func: 'swiglu'
   dropout: 0.1
 
-norm: 
+norm:
   norm_type: 'layer'
 
 transformer_block:
-  - norm 
-  - attention 
-  - skip 
+  - norm
+  - attention
+  - skip
   - norm
   - feed_forward
-  - skip 
-
-
-
+  - skip
