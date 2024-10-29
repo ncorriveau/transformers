@@ -33,7 +33,7 @@ This should activate your virtual environment and install all the needed depende
 The entry point for the repo is defined in src/train. There is a 
 click CLI defined, or you can use the predefined script as outlined below: 
 
-sh```
+```sh
 train --model-config-path ./configs/models/your_config.yaml  \
       --training-config-path ./configs/training/your_training_config.yaml \
       --data-path ./data/your_data
@@ -56,3 +56,7 @@ The configs/models/ directory should contain yaml defined decoder only LLM model
 This provides a very convenient wrapper to configuring your transformer block, to easily adapt to new variants with the existing components defined in the config as well. 
 
 ## Project Structure 
+
+## Examples 
+
+## Planned Work 
