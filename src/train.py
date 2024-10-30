@@ -42,12 +42,10 @@ from .utils import (
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("training.log"),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.FileHandler('training.log'), logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
+
 
 def setup_checkpoint_dir() -> str:
     # get project root dir
@@ -146,15 +144,18 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
 
 def set_sampler(dataset: torch.utils.data.Dataset, state: dict[str, Any]) -> Sampler:
     if state['world_size'] > 1:
-        sampler = DistributedSampler(dataset, num_replicas=state['world_size'], rank=state['rank'])
+        sampler = DistributedSampler(
+            dataset, num_replicas=state['world_size'], rank=state['rank']
+        )
         state['shuffle'] = False
         state['sampler'] = sampler
         return sampler
     else:
         state['shuffle'] = True
         state['sampler'] = False
-        return None 
-    
+        return None
+
+
 @torch.no_grad()
 def get_val_loss(
     model: CausalLLM, val_data: torch.Tensor, context, device: torch.device
@@ -315,12 +316,14 @@ def train(
                     torch.save(checkpoint, os.path.join(check_dir, 'best_model.pth'))
                     logger.info(f'Saved best model at epoch {epoch} step {step}')
 
-                # only working for single CPU / gpu set up right now. 
+                # only working for single CPU / gpu set up right now.
                 if state['world_size'] <= 1:
                     with torch.no_grad():
                         model.eval()
                         generated = model.generate(test_phrase, 10, top_k=50)
-                        logger.info(dataset.enc.decode(generated.squeeze().cpu().numpy()))
+                        logger.info(
+                            dataset.enc.decode(generated.squeeze().cpu().numpy())
+                        )
                         model.train()
 
             step += 1
