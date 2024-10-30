@@ -11,7 +11,7 @@ import torch.optim.lr_scheduler as lr_scheduler
 import yaml
 from packaging import version
 from pydantic import BaseModel, Field, field_validator, model_validator
-from torch.cuda.amp import GradScaler
+from torch.amp import GradScaler
 from typing_extensions import Self
 
 from .model import Common, ModelConfig
@@ -112,7 +112,7 @@ class AttentionConfig(BaseModel):
         assert (
             self.num_heads_q % self.num_heads_v == 0
         ), 'Number of query heads must be divisible by the number of value heads'
-
+        return self
 
 class PEConfig(BaseModel):
     pe_type: SupportedPE = Field(
@@ -369,7 +369,7 @@ def build_training_config(training_config: str) -> TrainingConfig:
         scheduler_name=validated_config.scheduler_name,
         scheduler_args=validated_config.scheduler_args,
         clip_grad_norm=validated_config.clip_grad_norm,
-        grad_scaler=GradScaler(
+        grad_scaler=GradScaler('cuda',
             enabled=validated_config.use_grad_scaler and dtype_is_f16 and cuda_available
         ),
         batch_size=validated_config.batch_size,
