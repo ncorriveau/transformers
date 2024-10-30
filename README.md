@@ -18,8 +18,6 @@ More to come!
 
 - [Setup](#setup)
 - [Usage](#usage)
-- [Project Structure](#project-structure)
-- [Examples](#examples)
 - [Planned Work](#planned-work)
 
 ## Setup
