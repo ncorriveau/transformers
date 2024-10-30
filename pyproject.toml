@@ -54,3 +54,8 @@ combine-as-imports = true
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/*" = ["PT012"]
+
+[dependency-groups]
+lint = [
+    "ruff>=0.7.1",
+]
