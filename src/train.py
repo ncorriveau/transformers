@@ -134,6 +134,17 @@ def distribute_model(model: nn.Module, state: dict, strategy: str) -> nn.Module:
     return model
 
 
+def set_sampler(dataset: torch.utils.data.Dataset, state: dict[str, Any]) -> Sampler:
+    if state['world_size'] > 1:
+        sampler = DistributedSampler(dataset, num_replicas=state['world_size'], rank=state['rank'])
+        state['shuffle'] = False
+        state['sampler'] = sampler
+        return sampler
+    else:
+        state['shuffle'] = True
+        state['sampler'] = False
+        return None 
+    
 @torch.no_grad()
 def get_val_loss(
     model: CausalLLM, val_data: torch.Tensor, context, device: torch.device
@@ -183,19 +194,10 @@ def train(
     training_config: TrainingConfig = build_training_config(training_config_path)
     dataset = TokenDataSet('gpt2', model_config.common.context_size, data_path)
     check_dir = setup_checkpoint_dir()
-    sampler = None
-
-    if world_size > 1:
-        sampler: Sampler = DistributedSampler(
-            dataset, rank=rank, num_replicas=world_size
-        )
-
     state.update(
         {
             'world_size': world_size,
             'rank': rank,
-            'sampler': sampler,
-            'shuffle': sampler is None,
         }
     )
     device = state['device']
@@ -240,16 +242,19 @@ def train(
 
     # TODO: investigate memory pinning
     train, test = dataset.get_train_test_split(dataset)
+    train_sampler = set_sampler(train, state)
+    test_sampler = set_sampler(test, state)
+
     train_loader = DataLoader(
         train,
         batch_size=worker_batch_size,
-        sampler=state['sampler'],
+        sampler=train_sampler,
         shuffle=state['shuffle'],
     )
     test_loader = DataLoader(
         test,
         batch_size=worker_batch_size,
-        sampler=state['sampler'],
+        sampler=test_sampler,
         shuffle=state['shuffle'],
     )
 
@@ -283,9 +288,7 @@ def train(
             scaler.update()
 
             print(f'Rank {rank}, Epoch {epoch}, Step {step}, Loss: {loss.item()}')
-            # run sample output on our test sentence
-            if step % 10 == 0 and step > 0 and rank == 0:
-                # TODO: implement get_val_loss
+            if step % 100 == 0 and step > 0 and rank == 0:
                 val_loss = get_val_loss(model, test_loader, ctx, device)
                 print(f'Validation loss: {val_loss}')
                 if val_loss < best_loss and step > 0:
@@ -302,11 +305,13 @@ def train(
                     torch.save(checkpoint, os.path.join(check_dir, 'best_model.pth'))
                     print(f'Saved best model at epoch {epoch} step {step}')
 
-                with torch.no_grad():
-                    model.eval()
-                    generated = model.generate(test_phrase, 10, top_k=50)
-                    print(dataset.enc.decode(generated.squeeze().cpu().numpy()))
-                    model.train()
+                # only working for single CPU / gpu set up right now. 
+                if state['worldsize'] <= 1:
+                    with torch.no_grad():
+                        model.eval()
+                        generated = model.generate(test_phrase, 10, top_k=50)
+                        print(dataset.enc.decode(generated.squeeze().cpu().numpy()))
+                        model.train()
 
             step += 1
 
