@@ -4,13 +4,18 @@ Inspired by Andrej Karpathy, this repo serves as a flexible, configurable way
 to kick off LLM training experiments. The goal of the repo is to be able to take a new model card, update a YAML file for the particular components of that model (e.g. FFN dim, activation function, RoPE, order etc)
 and then be able to train a real model from scratch with one command. It should work for single CPU, GPU, or multi GPU clusters out of the box, and this should largely be abstracted from the user outside of the distributed strategy to use. 
 
+The out of the box configs are in configs/ -> you define one for the model (e.g. typical model card), and one for training (e.g. optimizer, batch size, dtype etc). 
+
 Currently the repo supports the following:
+- ✔️ Multihead Attention, MQA, GQA 
 - ✔️ Sinusoidal Positional Encoding and RoPE
 - ✔️ ReLU, GeLU, and SwiGLU activations
 - ✔️ layer, batch and RMS norms
 - ✔️ DDP and data parallel distributions
 - ✔️ Checkpointing
 - ✔️ Confirugable Transformer blocks - all in simple YAML!  
+
+
 
 More to come! 
 
