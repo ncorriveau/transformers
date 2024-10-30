@@ -7,6 +7,7 @@ from contextlib import nullcontext
 from functools import partial
 from itertools import islice
 from typing import Any
+import logging
 
 import click
 import numpy as np
@@ -38,6 +39,15 @@ from .utils import (
     build_training_config,
 )
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("training.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 def setup_checkpoint_dir() -> str:
     # get project root dir
@@ -88,7 +98,7 @@ def setup(rank, world_size, backend: str = 'nccl') -> tuple[int, int]:
     """
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
-    print(f'Setting up process {rank + 1}/{world_size}')
+    logger.info(f'Setting up process {rank + 1}/{world_size}')
 
     # if world_size > 1 then we start a dist process
     if world_size > 1:
@@ -201,7 +211,7 @@ def train(
         }
     )
     device = state['device']
-    print(f'Rank {rank} using device: {device}')
+    logger.info(f'Rank {rank} using device: {device}')
 
     # from karpathy's nanogpt
     ctx = (
@@ -226,14 +236,14 @@ def train(
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         best_loss = checkpoint['best_val_loss']
-        print(f'Loaded checkpoint from {checkpoint_path}')
+        logger.info(f'Loaded checkpoint from {checkpoint_path}')
 
     if training_config.compile:
         # this is a hack to deal with old versions of numpy and newer torch w compile
         patch_numpy()
-        print('Compiling model... this may take a minute')
+        logger.warning('Compiling model... this may take a minute')
         model = torch.compile(model)
-        print('Model compiled')
+        logger.info('Model compiled')
 
     model: CausalLLM = distribute_model(
         model, state, training_config.distributed_strategy
@@ -287,10 +297,10 @@ def train(
             scaler.step(optimizer)
             scaler.update()
 
-            print(f'Rank {rank}, Epoch {epoch}, Step {step}, Loss: {loss.item()}')
+            logger.info(f'Rank {rank}, Epoch {epoch}, Step {step}, Loss: {loss.item()}')
             if step % 100 == 0 and step > 0 and rank == 0:
                 val_loss = get_val_loss(model, test_loader, ctx, device)
-                print(f'Validation loss: {val_loss}')
+                logger.info(f'Validation loss: {val_loss}')
                 if val_loss < best_loss and step > 0:
                     best_loss = val_loss
                     checkpoint = {
@@ -303,14 +313,14 @@ def train(
                         'best_val_loss': best_loss,
                     }
                     torch.save(checkpoint, os.path.join(check_dir, 'best_model.pth'))
-                    print(f'Saved best model at epoch {epoch} step {step}')
+                    logger.info(f'Saved best model at epoch {epoch} step {step}')
 
                 # only working for single CPU / gpu set up right now. 
-                if state['worldsize'] <= 1:
+                if state['world_size'] <= 1:
                     with torch.no_grad():
                         model.eval()
                         generated = model.generate(test_phrase, 10, top_k=50)
-                        print(dataset.enc.decode(generated.squeeze().cpu().numpy()))
+                        logger.info(dataset.enc.decode(generated.squeeze().cpu().numpy()))
                         model.train()
 
             step += 1
