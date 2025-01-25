@@ -1,4 +1,4 @@
-# quick-trainer
+# AutoLLM Trainer
 
 Inspired by Andrej Karpathy, this repo serves as a flexible, configurable way 
 to kick off LLM training experiments. The goal of the repo is to be able to take a new model card, update a YAML file for the particular components of that model (e.g. FFN dim, activation function, RoPE, order etc)
